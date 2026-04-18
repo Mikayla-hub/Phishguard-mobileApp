@@ -43,7 +43,50 @@ const LearningModuleScreen = ({ navigation, route }) => {
         setIsLoadingData(true);
         const res = await getLearningModule(moduleId);
         if (res && res.module) {
-          setModule(res.module);
+          const mod = res.module;
+          // Firebase may return arrays as objects with numeric keys — normalize to a real array
+          if (mod.lessons && !Array.isArray(mod.lessons)) {
+            mod.lessons = Object.values(mod.lessons);
+          }
+          // Ensure lessons is always an array
+          if (!mod.lessons) {
+            mod.lessons = [];
+          }
+          // Deep-normalize nested arrays inside each lesson (Firebase converts ALL arrays to objects)
+          mod.lessons = mod.lessons.map((lesson) => {
+            const normalized = { ...lesson };
+            // Quiz options
+            if (normalized.options && !Array.isArray(normalized.options)) {
+              normalized.options = Object.values(normalized.options);
+            }
+            // Interactive flags
+            if (normalized.flags && !Array.isArray(normalized.flags)) {
+              normalized.flags = Object.values(normalized.flags);
+            }
+            // Practice emails
+            if (normalized.emails && !Array.isArray(normalized.emails)) {
+              normalized.emails = Object.values(normalized.emails);
+            }
+            // Practice websites
+            if (normalized.websites && !Array.isArray(normalized.websites)) {
+              normalized.websites = Object.values(normalized.websites);
+            }
+            // Practice checklist
+            if (normalized.checklist && !Array.isArray(normalized.checklist)) {
+              normalized.checklist = Object.values(normalized.checklist);
+            }
+            // Summary points
+            if (normalized.points && !Array.isArray(normalized.points)) {
+              normalized.points = Object.values(normalized.points);
+            }
+            // Scenario URLs
+            if (normalized.scenario && normalized.scenario.urls && !Array.isArray(normalized.scenario.urls)) {
+              normalized.scenario = { ...normalized.scenario, urls: Object.values(normalized.scenario.urls) };
+            }
+            return normalized;
+          });
+          console.log(`[LearningModule] Loaded ${mod.lessons.length} lessons:`, mod.lessons.map(l => `${l.id}(${l.type})`));
+          setModule(mod);
         } else {
           Alert.alert("Error", "Module data not found.");
           navigation.goBack();

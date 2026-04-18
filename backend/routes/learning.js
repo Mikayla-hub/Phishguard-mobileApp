@@ -122,15 +122,38 @@ async function generateModuleWithAI(topic) {
     ]
   }`;
 
-  // Example using Gemini 2.5 API
-  const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { response_mime_type: "application/json" }
-  });
+  // Retry up to 2 times if Gemini returns malformed JSON
+  let lastError = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const response = await axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        {
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { response_mime_type: "application/json" }
+        },
+        { timeout: 60000 }
+      );
 
-  const responseText = response.data.candidates[0].content.parts[0].text;
-  const cleanedText = responseText.replace(/^\`\`\`json\n?/, '').replace(/\n?\`\`\`$/, '');
-  return JSON.parse(cleanedText);
+      const responseText = response.data.candidates[0].content.parts[0].text;
+      // Clean up common AI JSON issues
+      let cleanedText = responseText
+        .replace(/^```json\n?/, '').replace(/\n?```$/, '')  // Remove markdown fences
+        .replace(/,\s*([}\]])/g, '$1')                      // Remove trailing commas
+        .replace(/[\x00-\x1F\x7F]/g, (ch) =>                // Escape control chars
+          ch === '\n' ? '\\n' : ch === '\t' ? '\\t' : ch === '\r' ? '' : ''
+        );
+
+      return JSON.parse(cleanedText);
+    } catch (err) {
+      lastError = err;
+      console.warn(`AI JSON parse attempt ${attempt} failed:`, err.message);
+      if (attempt < 2) {
+        await new Promise(r => setTimeout(r, 1000)); // Wait before retry
+      }
+    }
+  }
+  throw lastError;
 }
 
 /**
@@ -270,6 +293,28 @@ router.get('/modules/:moduleId', authenticate, async (req, res) => {
     if (!module) {
       return res.status(404).json({ error: 'Module not found' });
     }
+
+    // Firebase may store arrays as objects with numeric keys — normalize
+    if (module.lessons && !Array.isArray(module.lessons)) {
+      module.lessons = Object.values(module.lessons);
+    }
+    if (!module.lessons) {
+      module.lessons = [];
+    }
+    // Deep-normalize nested arrays inside each lesson
+    module.lessons = module.lessons.map(lesson => {
+      const l = { ...lesson };
+      if (l.options && !Array.isArray(l.options)) l.options = Object.values(l.options);
+      if (l.flags && !Array.isArray(l.flags)) l.flags = Object.values(l.flags);
+      if (l.emails && !Array.isArray(l.emails)) l.emails = Object.values(l.emails);
+      if (l.websites && !Array.isArray(l.websites)) l.websites = Object.values(l.websites);
+      if (l.checklist && !Array.isArray(l.checklist)) l.checklist = Object.values(l.checklist);
+      if (l.points && !Array.isArray(l.points)) l.points = Object.values(l.points);
+      if (l.scenario && l.scenario.urls && !Array.isArray(l.scenario.urls)) {
+        l.scenario = { ...l.scenario, urls: Object.values(l.scenario.urls) };
+      }
+      return l;
+    });
 
     // Get user progress for this module's lessons
     const progressSnapshot = await database.ref('learning_progress')

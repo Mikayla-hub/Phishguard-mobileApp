@@ -25,17 +25,21 @@ const Homescreen = ({ navigation }) => {
         if (storedName) setUsername(storedName);
 
         setIsGenerating(true);
-        // Generate a new unique module on login/mount
-        await generateUniqueModule();
+        // Try to generate a new unique module on login/mount — but don't block if it fails
+        try {
+          await generateUniqueModule();
+        } catch (genError) {
+          console.warn("AI module generation failed (non-blocking):", genError.message || genError);
+        }
         
-        // Fetch the updated list of modules from the database
+        // Always fetch existing modules from the database, even if generation failed
         const response = await getLearningModules();
         if (response && response.modules) {
           // Show the latest 3 dynamically generated modules
           setDynamicModules(response.modules.slice(-3).reverse());
         }
       } catch (error) {
-        console.error("Failed to initialize AI modules:", error);
+        console.error("Failed to load modules:", error);
       } finally {
         setIsGenerating(false);
       }
