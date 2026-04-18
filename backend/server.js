@@ -109,12 +109,13 @@ db.initialize()
 
     mlService.initializeFromCSVs(csvConfigs, modelPath).catch(console.error);
 
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log('========================================');
       console.log('   PhishGuard Backend Server');
       console.log('========================================');
-      console.log(`Server running on port ${PORT}`);
-      console.log(`Health check: http://localhost:${PORT}/api/health`);
+      console.log(`Server running on http://0.0.0.0:${PORT}`);
+      console.log(`LAN access:    http://192.168.1.17:${PORT}/api/health`);
+      console.log(`Health check:  http://localhost:${PORT}/api/health`);
       console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log('========================================');
     });

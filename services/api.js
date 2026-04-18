@@ -2,12 +2,12 @@ import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // IMPORTANT: Verify this is still your current IPv4 address!
-const YOUR_LOCAL_IP = "192.168.1.53"; 
+const YOUR_LOCAL_IP = "192.168.1.17"; 
 
 const API_BASE_URL =
   Platform.OS === "web"
     ? "http://localhost:3001/api"
-    : `http://${"172.20.10.2"}:3001/api`;
+    : `http://${YOUR_LOCAL_IP}:3001/api`;
 
 let authToken = null;
 
