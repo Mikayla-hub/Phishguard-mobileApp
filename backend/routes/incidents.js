@@ -15,8 +15,10 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
  * AI Generation Logic for Incident Procedures
  */
 async function generateProcedureWithAI(threatType) {
-  const apiKey = (process.env.GEMINI_API_KEY || process.env.AI_API_KEY || '').trim();
-  if (!apiKey) {
+  const geminiKey = (process.env.GEMINI_API_KEY || process.env.AI_API_KEY || '').trim();
+  const groqKey = process.env.GROQ_API_KEY;
+
+  if (!geminiKey) {
     throw new Error('AI API Key is missing. Please set GEMINI_API_KEY in your .env file.');
   }
 
@@ -35,14 +37,99 @@ async function generateProcedureWithAI(threatType) {
     ]
   }`;
 
-  const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { response_mime_type: "application/json" }
-  });
+  const cleanJson = (raw) => {
+    let text = raw.trim();
+    text = text.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '').trim();
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start !== -1 && end !== -1) {
+      text = text.substring(start, end + 1);
+    }
+    text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+    return text;
+  };
 
-  const responseText = response.data.candidates[0].content.parts[0].text;
-  const cleanedText = responseText.replace(/^\`\`\`json\n?/, '').replace(/\n?\`\`\`$/, '');
-  return JSON.parse(cleanedText);
+  const PROVIDERS = [
+    {
+      name: 'gemini-2.5-flash',
+      call: () => axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+        { contents: [{ parts: [{ text: prompt }] }], generationConfig: { response_mime_type: 'application/json' } },
+        { timeout: 60000 }
+      ),
+      parse: (res) => res.data.candidates[0].content.parts[0].text,
+    },
+    {
+      name: 'gemini-2.0-flash',
+      call: () => axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+        { contents: [{ parts: [{ text: prompt }] }], generationConfig: { response_mime_type: 'application/json' } },
+        { timeout: 60000 }
+      ),
+      parse: (res) => res.data.candidates[0].content.parts[0].text,
+    },
+    {
+      name: 'gemini-1.5-flash',
+      call: () => axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+        { contents: [{ parts: [{ text: prompt }] }], generationConfig: { response_mime_type: 'application/json' } },
+        { timeout: 60000 }
+      ),
+      parse: (res) => res.data.candidates[0].content.parts[0].text,
+    },
+    {
+      name: 'Groq / LLaMA-3.3-70B',
+      call: () => axios.post(
+        'https://api.groq.com/openai/v1/chat/completions',
+        {
+          model: 'llama-3.3-70b-versatile',
+          messages: [{ role: 'user', content: prompt }],
+          response_format: { type: 'json_object' },
+          temperature: 0.7,
+        },
+        {
+          headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+          timeout: 60000,
+        }
+      ),
+      parse: (res) => res.data.choices[0].message.content,
+    },
+  ];
+
+  let lastError = null;
+
+  for (const provider of PROVIDERS) {
+    console.log(`🤖 [Incidents] Trying provider: ${provider.name}`);
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const response = await provider.call();
+        const parsed = JSON.parse(cleanJson(provider.parse(response)));
+        console.log(`✅ [Incidents] Procedure generated successfully using ${provider.name}`);
+        return parsed;
+
+      } catch (err) {
+        lastError = err;
+        const status = err?.response?.status;
+        const isUnavailable = status === 503 || err?.response?.data?.error?.status === 'UNAVAILABLE';
+        const isRateLimited = status === 429 || err?.response?.data?.error?.status === 'RESOURCE_EXHAUSTED';
+
+        if (isUnavailable) {
+          console.warn(`⚠️  ${provider.name} is overloaded (503). Switching to next provider...`);
+          break;
+        }
+        if (isRateLimited) {
+          console.warn(`⚠️  ${provider.name} hit rate limit (429). Waiting 2s before next provider...`);
+          await new Promise(r => setTimeout(r, 2000));
+          break;
+        }
+        console.warn(`⚠️  ${provider.name} attempt ${attempt} failed (JSON parse): ${err.message}`);
+        if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 /**
@@ -65,18 +152,40 @@ async function getOrGenerateProcedure(database, incidentType) {
 
 /**
  * GET /api/incidents/procedures
- * Get all available cached incident response procedures
+ * Get incident response procedures relevant ONLY to the current user's reported incidents
  */
 router.get('/procedures', authenticate, async (req, res) => {
   try {
     const database = db.getDb();
-    const snapshot = await database.ref('procedures').once('value');
-    const procedures = [];
     
-    if (snapshot.exists()) {
-      snapshot.forEach(child => {
-        procedures.push({ id: child.key, ...child.val() });
+    // 1. Get all incidents reported by the current user
+    const userIncidentsSnapshot = await database.ref('incidents')
+      .orderByChild('userId')
+      .equalTo(req.user.id)
+      .once('value');
+      
+    // 2. Extract unique procedure IDs from those incidents
+    const userProcedureIds = new Set();
+    if (userIncidentsSnapshot.exists()) {
+      userIncidentsSnapshot.forEach(child => {
+        const incident = child.val();
+        if (incident.incidentType) {
+          userProcedureIds.add(incident.incidentType);
+        }
       });
+    }
+    
+    // 3. Fetch only those specific procedures from the cache
+    const procedures = [];
+    if (userProcedureIds.size > 0) {
+      const proceduresSnapshot = await database.ref('procedures').once('value');
+      if (proceduresSnapshot.exists()) {
+        proceduresSnapshot.forEach(child => {
+          if (userProcedureIds.has(child.key)) {
+            procedures.push({ id: child.key, ...child.val() });
+          }
+        });
+      }
     }
 
     res.json({ procedures });

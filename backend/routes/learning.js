@@ -58,103 +58,237 @@ async function generateModuleWithAI(topic) {
     throw new Error('AI API Key is missing. Please set GEMINI_API_KEY in your .env file.');
   }
 
-  const prompt = `You are an expert, empathetic cybersecurity educator designing courses for absolute beginners with ZERO prior knowledge of phishing. Generate a **highly unique, specific, and creative** interactive learning module about "${topic}". DO NOT use overly technical jargon. Use extremely simple, clear, user-friendly language focusing on the direct dangers and how everyday people can avoid them. Invent a specific, relatable real-world scenario for this session.
-  Output ONLY valid JSON. It MUST strictly follow this exact schema:
-  {
-    "id": "generate-a-kebab-case-id",
-    "title": "Unique Beginner Module",
-    "description": "Extremely simple, relatable short description",
-    "duration": "15 min",
-    "difficulty": "beginner",
-    "icon": "shield",
-    "lessons": [
-      {
-        "id": "lesson-1",
-        "type": "info",
-        "title": "Educational Concept",
-        "content": "- STRICTLY output 4-5 concise bullet points (using hyphens and newlines ONLY, absolutely no paragraphs) explaining what this specific threat actually is in user-friendly language."
-      },
-      {
-        "id": "lesson-2",
-        "type": "info",
-        "title": "Real-World Example",
-        "content": "- STRICTLY output 4-5 concise bullet points (using hyphens and newlines ONLY, absolutely no paragraphs) providing exactly how this scenario happens to everyday people giving real world examples."
-      },
-      {
-        "id": "lesson-3",
-        "type": "quiz",
-        "title": "Performance Check: Q1",
-        "question": "First performance check question?",
-        "options": [
-          { "id": "opt1", "text": "Option A", "correct": true },
-          { "id": "opt2", "text": "Option B", "correct": false },
-          { "id": "opt3", "text": "Option C", "correct": false },
-          { "id": "opt4", "text": "Option D", "correct": false }
-        ],
-        "explanation": "Explanation for Q1"
-      },
-      {
-        "id": "lesson-4",
-        "type": "quiz",
-        "title": "Performance Check: Q2",
-        "question": "Second performance check question?",
-        "options": [
-          { "id": "opt1", "text": "Option A", "correct": true },
-          { "id": "opt2", "text": "Option B", "correct": false },
-          { "id": "opt3", "text": "Option C", "correct": false },
-          { "id": "opt4", "text": "Option D", "correct": false }
-        ],
-        "explanation": "Explanation for Q2"
-      },
-      {
-        "id": "lesson-5",
-        "type": "quiz",
-        "title": "Performance Check: Q3",
-        "question": "Third performance check question?",
-        "options": [
-          { "id": "opt1", "text": "Option A", "correct": true },
-          { "id": "opt2", "text": "Option B", "correct": false },
-          { "id": "opt3", "text": "Option C", "correct": false },
-          { "id": "opt4", "text": "Option D", "correct": false }
-        ],
-        "explanation": "Explanation for Q3"
-      }
-    ]
-  }`;
+  const prompt = `You are an expert, empathetic cybersecurity educator designing courses for absolute beginners with ZERO prior knowledge. Generate a **highly unique, specific, and creative** interactive learning module about "${topic}". Use extremely simple, clear, user-friendly language. Invent specific, relatable real-world scenarios.
 
-  // Retry up to 2 times if Gemini returns malformed JSON
-  let lastError = null;
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      const response = await axios.post(
+The module MUST follow this exact 8-page learning journey in order:
+PAGE 1 → Educational content (what it is, why it matters)
+PAGE 2 → Real-world example (a vivid story of a real attack)
+PAGE 3 → Warning signs to watch for (interactive red flags)
+PAGE 4 → How to practise safety (a self-assessment checklist)
+PAGE 5 → Spot the threat (identify phishing vs. legitimate emails)
+PAGES 6–8 → Quiz performance checks (3 separate quiz questions)
+
+Output ONLY valid JSON. It MUST strictly follow this exact schema with exactly 8 lessons:
+{
+  "id": "generate-a-kebab-case-id",
+  "title": "Unique Beginner Module Title",
+  "description": "Short beginner-friendly description (1 sentence)",
+  "duration": "15 min",
+  "difficulty": "beginner",
+  "icon": "shield",
+  "color": "#e8f0fe",
+  "accentColor": "#1a73e8",
+  "level": "Beginner",
+  "lessons": [
+    {
+      "id": "lesson-1",
+      "type": "info",
+      "title": "📖 Page 1: What You Need to Know",
+      "content": "Write 6-8 concise bullet points (each starting with a hyphen) explaining the core concept in simple everyday language. Cover: what it is, why it matters, who is targeted, how attackers operate, and common misconceptions. Separate each bullet with a newline.",
+      "tip": "Write one practical, memorable safety tip the user can apply immediately today."
+    },
+    {
+      "id": "lesson-2",
+      "type": "info",
+      "title": "🌍 Page 2: Real-World Example",
+      "content": "Write a detailed real-world story (6-8 bullet points, each starting with a hyphen) about a specific person or organisation that fell victim to this exact type of attack. Include: who was targeted, what the attacker did step-by-step, what happened as a result, how much was lost or what damage was caused, and exactly how it could have been prevented. Make it vivid and relatable.",
+      "tip": "Write the single most important lesson learned from this real-world story."
+    },
+    {
+      "id": "lesson-3",
+      "type": "interactive",
+      "title": "🚩 Page 3: Warning Signs to Watch For",
+      "content": "Tap each warning sign below to learn more about it:",
+      "flags": [
+        { "icon": "⚠️", "title": "First red flag title specific to this topic", "description": "Detailed, practical explanation of this warning sign and how to spot it in real life." },
+        { "icon": "🔍", "title": "Second red flag title specific to this topic", "description": "Detailed, practical explanation of this warning sign and how to spot it in real life." },
+        { "icon": "🎭", "title": "Third red flag title specific to this topic", "description": "Detailed, practical explanation of this warning sign and how to spot it in real life." },
+        { "icon": "📧", "title": "Fourth red flag title specific to this topic", "description": "Detailed, practical explanation of this warning sign and how to spot it in real life." },
+        { "icon": "🔗", "title": "Fifth red flag title specific to this topic", "description": "Detailed, practical explanation of this warning sign and how to spot it in real life." }
+      ]
+    },
+    {
+      "id": "lesson-4",
+      "type": "practice",
+      "title": "🛡️ Page 4: How to Stay Safe — Self-Assessment",
+      "checklist": [
+        { "id": "item1", "text": "First specific safety habit or protective action related to this topic", "category": "Prevention" },
+        { "id": "item2", "text": "Second specific safety habit or protective action related to this topic", "category": "Prevention" },
+        { "id": "item3", "text": "Third specific safety habit or tool related to this topic", "category": "Tools" },
+        { "id": "item4", "text": "Fourth specific safety habit related to this topic", "category": "Awareness" },
+        { "id": "item5", "text": "Fifth specific response action if you suspect this type of attack", "category": "Response" },
+        { "id": "item6", "text": "Sixth specific action to protect others around you from this threat", "category": "Response" }
+      ]
+    },
+    {
+      "id": "lesson-5",
+      "type": "practice",
+      "title": "🎯 Page 5: Spot the Threat",
+      "emails": [
+        { "id": "email1", "from": "realistic-phishing-sender@suspicious-domain.com", "subject": "Realistic phishing subject line related to this topic", "preview": "First 2 sentences of a convincing phishing message with subtle red flags related to this topic.", "isPhishing": true, "explanation": "Explain exactly which red flags reveal this is phishing — be specific to this topic." },
+        { "id": "email2", "from": "noreply@legitimate-company.com", "subject": "Legitimate email subject line", "preview": "First 2 sentences of a legitimate, safe message that could be mistaken for phishing.", "isPhishing": false, "explanation": "Explain clearly why this email is legitimate and what makes it trustworthy." },
+        { "id": "email3", "from": "another-phish@fake-lookalike.net", "subject": "Another phishing subject with urgency related to this topic", "preview": "First 2 sentences with subtle but real phishing indicators specific to this topic.", "isPhishing": true, "explanation": "Explain the specific red flags in this second phishing attempt for this topic." }
+      ]
+    },
+    {
+      "id": "lesson-6",
+      "type": "quiz",
+      "title": "✅ Page 6: Performance Check — Q1",
+      "question": "Ask a scenario-based question that tests understanding of the core educational concept from Page 1.",
+      "options": [
+        { "id": "opt1", "text": "Option A", "correct": false },
+        { "id": "opt2", "text": "Option B (the correct answer)", "correct": true },
+        { "id": "opt3", "text": "Option C", "correct": false },
+        { "id": "opt4", "text": "Option D", "correct": false }
+      ],
+      "explanation": "Detailed explanation of why the correct answer is right and why each wrong option is incorrect."
+    },
+    {
+      "id": "lesson-7",
+      "type": "quiz",
+      "title": "✅ Page 7: Performance Check — Q2",
+      "question": "Ask a practical question about identifying a warning sign from Page 3 or responding to this threat.",
+      "options": [
+        { "id": "opt1", "text": "Option A", "correct": false },
+        { "id": "opt2", "text": "Option B", "correct": false },
+        { "id": "opt3", "text": "Option C (the correct answer)", "correct": true },
+        { "id": "opt4", "text": "Option D", "correct": false }
+      ],
+      "explanation": "Detailed explanation of why the correct answer is right and why each wrong option is incorrect."
+    },
+    {
+      "id": "lesson-8",
+      "type": "quiz",
+      "title": "✅ Page 8: Performance Check — Q3",
+      "question": "Ask a question about a specific safety practice or prevention strategy from Page 4.",
+      "options": [
+        { "id": "opt1", "text": "Option A (the correct answer)", "correct": true },
+        { "id": "opt2", "text": "Option B", "correct": false },
+        { "id": "opt3", "text": "Option C", "correct": false },
+        { "id": "opt4", "text": "Option D", "correct": false }
+      ],
+      "explanation": "Detailed explanation of why the correct answer is right and why each wrong option is incorrect."
+    }
+  ]
+}
+
+IMPORTANT RULES:
+- Follow the 8-page journey strictly: Educational → Real-World → Warning Signs → Safety Practices → Spot the Threat → Quiz×3.
+- Make ALL content unique and specific to "${topic}" — never use generic placeholders.
+- Vary which option is correct across the 3 quizzes (not always the same position).
+- The checklist on Page 4 must contain ACTIONABLE safety habits, not vague advice.
+- The practice emails on Page 5 must be realistic with believable sender addresses and subjects.
+- Every bullet point must be substantive and educational, not filler.
+- Output ONLY the JSON object, nothing else.`;
+
+
+
+  // Multi-provider fallback chain — tries each in order until one succeeds
+  const groqKey = process.env.GROQ_API_KEY;
+
+  const cleanJson = (raw) => {
+    let text = raw.trim();
+    // Strip markdown code blocks if present
+    text = text.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '').trim();
+    
+    // Extract everything between the first { and last }
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start !== -1 && end !== -1) {
+      text = text.substring(start, end + 1);
+    }
+    
+    // Remove invalid control characters but keep structural newlines and tabs
+    // Note: We don't replace \n with \\n globally because that destroys JSON structure
+    text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+    
+    return text;
+  };
+
+  const PROVIDERS = [
+    {
+      name: 'gemini-2.5-flash',
+      call: () => axios.post(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { response_mime_type: "application/json" }
-        },
+        { contents: [{ parts: [{ text: prompt }] }], generationConfig: { response_mime_type: 'application/json' } },
         { timeout: 60000 }
-      );
+      ),
+      parse: (res) => res.data.candidates[0].content.parts[0].text,
+    },
+    {
+      name: 'gemini-2.0-flash',
+      call: () => axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        { contents: [{ parts: [{ text: prompt }] }], generationConfig: { response_mime_type: 'application/json' } },
+        { timeout: 60000 }
+      ),
+      parse: (res) => res.data.candidates[0].content.parts[0].text,
+    },
+    {
+      name: 'gemini-1.5-flash',
+      call: () => axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        { contents: [{ parts: [{ text: prompt }] }], generationConfig: { response_mime_type: 'application/json' } },
+        { timeout: 60000 }
+      ),
+      parse: (res) => res.data.candidates[0].content.parts[0].text,
+    },
+    {
+      name: 'Groq / LLaMA-3.3-70B',
+      call: () => axios.post(
+        'https://api.groq.com/openai/v1/chat/completions',
+        {
+          model: 'llama-3.3-70b-versatile',
+          messages: [{ role: 'user', content: prompt }],
+          response_format: { type: 'json_object' },
+          temperature: 0.7,
+        },
+        {
+          headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+          timeout: 60000,
+        }
+      ),
+      parse: (res) => res.data.choices[0].message.content,
+    },
+  ];
 
-      const responseText = response.data.candidates[0].content.parts[0].text;
-      // Clean up common AI JSON issues
-      let cleanedText = responseText
-        .replace(/^```json\n?/, '').replace(/\n?```$/, '')  // Remove markdown fences
-        .replace(/,\s*([}\]])/g, '$1')                      // Remove trailing commas
-        .replace(/[\x00-\x1F\x7F]/g, (ch) =>                // Escape control chars
-          ch === '\n' ? '\\n' : ch === '\t' ? '\\t' : ch === '\r' ? '' : ''
-        );
+  let lastError = null;
 
-      return JSON.parse(cleanedText);
-    } catch (err) {
-      lastError = err;
-      console.warn(`AI JSON parse attempt ${attempt} failed:`, err.message);
-      if (attempt < 2) {
-        await new Promise(r => setTimeout(r, 1000)); // Wait before retry
+  for (const provider of PROVIDERS) {
+    console.log(`🤖 Trying provider: ${provider.name}`);
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const response = await provider.call();
+        const parsed = JSON.parse(cleanJson(provider.parse(response)));
+        console.log(`✅ Module generated successfully using ${provider.name}`);
+        return parsed;
+
+      } catch (err) {
+        lastError = err;
+        const status = err?.response?.status;
+        const isUnavailable = status === 503 || err?.response?.data?.error?.status === 'UNAVAILABLE';
+        const isRateLimited = status === 429 || err?.response?.data?.error?.status === 'RESOURCE_EXHAUSTED';
+
+        if (isUnavailable) {
+          console.warn(`⚠️  ${provider.name} is overloaded (503). Switching to next provider...`);
+          break;
+        }
+        if (isRateLimited) {
+          console.warn(`⚠️  ${provider.name} hit rate limit (429). Waiting 5s before next provider...`);
+          await new Promise(r => setTimeout(r, 5000));
+          break;
+        }
+        console.warn(`⚠️  ${provider.name} attempt ${attempt} failed (JSON parse): ${err.message}`);
+        if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
       }
     }
   }
+
+  // All providers exhausted
   throw lastError;
 }
+
 
 /**
  * GET /api/learning/modules

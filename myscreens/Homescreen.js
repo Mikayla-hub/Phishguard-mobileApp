@@ -18,6 +18,16 @@ const Homescreen = ({ navigation }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const { colors, isDarkMode } = useTheme();
 
+  // Fisher-Yates shuffle — returns a new randomly ordered array
+  const shuffleArray = (arr) => {
+    const shuffled = [...arr];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  };
+
   useEffect(() => {
     const initializeModules = async () => {
       try {
@@ -34,9 +44,23 @@ const Homescreen = ({ navigation }) => {
         
         // Always fetch existing modules from the database, even if generation failed
         const response = await getLearningModules();
-        if (response && response.modules) {
-          // Show the latest 3 dynamically generated modules
-          setDynamicModules(response.modules.slice(-3).reverse());
+        if (response && response.modules && response.modules.length > 0) {
+          // Prefer full 8-page modules (>= 6 lessons) — new format
+          const validModules = response.modules.filter(m => (m.totalLessons || 0) >= 6);
+          // Graceful fallback: if no new-format modules exist yet, show all available
+          const modulesToShow = validModules.length > 0 ? validModules : response.modules;
+
+          if (validModules.length === 0) {
+            console.warn(`[Learning Hub] No new-format modules yet. Showing ${response.modules.length} legacy modules as fallback.`);
+          } else {
+            console.log(`[Learning Hub] ${validModules.length} valid modules (of ${response.modules.length} total). Old-format skipped: ${response.modules.length - validModules.length}`);
+          }
+
+          // Shuffle so every login shows a fresh random selection
+          const shuffled = shuffleArray(modulesToShow);
+          // Show up to 4 random modules per session
+          setDynamicModules(shuffled.slice(0, 4));
+          console.log(`[Learning Hub] Showing ${Math.min(shuffled.length, 4)} shuffled modules.`);
         }
       } catch (error) {
         console.error("Failed to load modules:", error);
@@ -45,8 +69,16 @@ const Homescreen = ({ navigation }) => {
       }
     };
     
+    // Run immediately on component mount
     initializeModules();
-  }, []);
+    
+    // Also run every time the user navigates back to this screen
+    const unsubscribe = navigation.addListener('focus', () => {
+      initializeModules();
+    });
+    
+    return unsubscribe;
+  }, [navigation]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>

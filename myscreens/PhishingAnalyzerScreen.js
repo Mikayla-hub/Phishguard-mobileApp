@@ -67,7 +67,7 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: true,
+      allowsEditing: false, // Disabled to prevent forced square cropping of vertical screenshots
       quality: 0.8,
       base64: true,
     });
