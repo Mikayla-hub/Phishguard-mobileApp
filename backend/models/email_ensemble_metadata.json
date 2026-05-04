@@ -1,0 +1,13 @@
+{
+  "model_type": "voting_ensemble",
+  "components": [
+    "rf",
+    "gb"
+  ],
+  "n_features": 15000,
+  "test_samples": 3913,
+  "test_accuracy": 0.9552772808586762,
+  "training_samples": 15649,
+  "phishing_samples": 7868,
+  "legitimate_samples": 11694
+}
