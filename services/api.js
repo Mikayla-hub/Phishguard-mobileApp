@@ -73,6 +73,20 @@ export function register(name, email, password) {
   });
 }
 
+export function forgotPassword(email) {
+  return request("/auth/forgot-password", {
+    method: "POST",
+    body: { email },
+  });
+}
+
+export function resetPassword(email, otp, newPassword) {
+  return request("/auth/reset-password", {
+    method: "POST",
+    body: { email, otp, newPassword },
+  });
+}
+
 export function analyzePhishing(content, type) {
   return request("/phishing/analyze", {
     method: "POST",
@@ -93,9 +107,10 @@ export function getLearningModules() {
   });
 }
 
-export function generateUniqueModule() {
-  return request("/learning/modules/generate-unique", {
+export function generateModule(topic) {
+  return request("/learning/modules/generate", {
     method: "POST",
+    body: { topic },
   });
 }
 

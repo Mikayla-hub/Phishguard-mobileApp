@@ -9,76 +9,59 @@ import {
 } from "react-native";
 import React, { useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getLearningModules, generateUniqueModule } from "../services/api";
+import { getLearningModules, generateModule } from "../services/api";
 import { useTheme } from "../contexts/ThemeContext";
 
 const Homescreen = ({ navigation }) => {
+  const [allModules, setAllModules] = useState([]);
   const [dynamicModules, setDynamicModules] = useState([]);
   const [username, setUsername] = useState("User");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [selectedLevel, setSelectedLevel] = useState("beginner");
   const { colors, isDarkMode } = useTheme();
 
-  // Fisher-Yates shuffle — returns a new randomly ordered array
-  const shuffleArray = (arr) => {
-    const shuffled = [...arr];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    return shuffled;
+  const LEVEL_CONFIG = {
+    beginner: { label: "Beginner", color: "#1a73e8", bg: "#e8f0fe", icon: "🌱" },
+    intermediate: { label: "Intermediate", color: "#f57c00", bg: "#fef3e0", icon: "⚡" },
+    expert: { label: "Expert", color: "#c62828", bg: "#fce4ec", icon: "🔥" },
   };
 
   useEffect(() => {
+    const fetchModules = async () => {
+      try {
+        const response = await getLearningModules();
+        if (response?.modules?.length > 0) {
+          const validModules = response.modules.filter(m => (m.totalLessons || 0) >= 6);
+          const modulesToUse = validModules.length > 0 ? validModules : response.modules;
+          setAllModules(modulesToUse);
+        }
+      } catch (error) {
+        console.error("Failed to fetch modules:", error);
+      }
+    };
+
     const initializeModules = async () => {
       try {
         const storedName = await AsyncStorage.getItem("username");
         if (storedName) setUsername(storedName);
-
-        setIsGenerating(true);
-        // Try to generate a new unique module on login/mount — but don't block if it fails
-        try {
-          await generateUniqueModule();
-        } catch (genError) {
-          console.warn("AI module generation failed (non-blocking):", genError.message || genError);
-        }
-        
-        // Always fetch existing modules from the database, even if generation failed
-        const response = await getLearningModules();
-        if (response && response.modules && response.modules.length > 0) {
-          // Prefer full 8-page modules (>= 6 lessons) — new format
-          const validModules = response.modules.filter(m => (m.totalLessons || 0) >= 6);
-          // Graceful fallback: if no new-format modules exist yet, show all available
-          const modulesToShow = validModules.length > 0 ? validModules : response.modules;
-
-          if (validModules.length === 0) {
-            console.warn(`[Learning Hub] No new-format modules yet. Showing ${response.modules.length} legacy modules as fallback.`);
-          } else {
-            console.log(`[Learning Hub] ${validModules.length} valid modules (of ${response.modules.length} total). Old-format skipped: ${response.modules.length - validModules.length}`);
-          }
-
-          // Shuffle so every login shows a fresh random selection
-          const shuffled = shuffleArray(modulesToShow);
-          // Show up to 4 random modules per session
-          setDynamicModules(shuffled.slice(0, 4));
-          console.log(`[Learning Hub] Showing ${Math.min(shuffled.length, 4)} shuffled modules.`);
-        }
+        await fetchModules();
       } catch (error) {
-        console.error("Failed to load modules:", error);
-      } finally {
-        setIsGenerating(false);
+        console.error("Failed to initialise modules:", error);
       }
     };
-    
-    // Run immediately on component mount
+
     initializeModules();
-    
-    // Also run every time the user navigates back to this screen
-    const unsubscribe = navigation.addListener('focus', () => {
-      initializeModules();
-    });
-    
+    const unsubscribe = navigation.addListener('focus', fetchModules);
     return unsubscribe;
   }, [navigation]);
+
+  // Filter modules whenever selectedLevel or allModules changes
+  useEffect(() => {
+    const filtered = allModules.filter(m =>
+      (m.difficulty || 'beginner').toLowerCase() === selectedLevel
+    );
+    setDynamicModules(filtered);
+  }, [selectedLevel, allModules]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -162,36 +145,58 @@ const Homescreen = ({ navigation }) => {
         {/* Learning Hub Section */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Learning Hub</Text>
         <Text style={[styles.sectionSubtitle, { color: colors.subtext }]}>
-          {isGenerating ? "🤖 Generating new AI module for this session..." : "Interactive lessons • 15 mins or less"}
+          Interactive lessons across 3 difficulty levels
         </Text>
+
+        {/* Difficulty Filter Tabs */}
+        <View style={styles.levelTabs}>
+          {Object.entries(LEVEL_CONFIG).map(([level, config]) => (
+            <TouchableOpacity
+              key={level}
+              style={[
+                styles.levelTab,
+                selectedLevel === level && { backgroundColor: config.color, borderColor: config.color },
+              ]}
+              onPress={() => setSelectedLevel(level)}
+            >
+              <Text style={[
+                styles.levelTabText,
+                selectedLevel === level && { color: "#fff" },
+              ]}>
+                {config.icon} {config.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Module Cards */}
         <View style={styles.modulesContainer}>
           {dynamicModules.length > 0 ? (
-            dynamicModules.map((mod) => (
-              <TouchableOpacity 
-                key={mod.id}
-                style={styles.moduleCard}
-                onPress={() => navigation.navigate("LearningModuleScreen", { moduleId: mod.id })}
-              >
-                <View style={[styles.iconBox, { backgroundColor: "#e8f0fe" }]}>
-                   <Text style={styles.iconText}>{mod.icon === "shield" ? "🛡️" : "🧠"}</Text>
-                </View>
-                <View style={styles.moduleInfo}>
-                  <Text style={styles.moduleTitle}>{mod.title}</Text>
-                  <Text style={styles.moduleDuration}>{mod.duration || "15 min"} • {mod.difficulty || "Intermediate"}</Text>
-                </View>
-                <Text style={styles.moduleArrow}>›</Text>
-              </TouchableOpacity>
-            ))
+            dynamicModules.map((mod) => {
+              const levelCfg = LEVEL_CONFIG[(mod.difficulty || 'beginner').toLowerCase()] || LEVEL_CONFIG.beginner;
+              return (
+                <TouchableOpacity 
+                  key={mod.id}
+                  style={styles.moduleCard}
+                  onPress={() => navigation.navigate("LearningModuleScreen", { moduleId: mod.id })}
+                >
+                  <View style={[styles.iconBox, { backgroundColor: levelCfg.bg }]}>
+                     <Text style={styles.iconText}>{levelCfg.icon}</Text>
+                  </View>
+                  <View style={styles.moduleInfo}>
+                    <Text style={styles.moduleTitle}>{mod.title}</Text>
+                    <Text style={styles.moduleDuration}>{mod.duration || "15 min"}</Text>
+                  </View>
+                  <View style={[styles.levelBadge, { backgroundColor: levelCfg.color }]}>
+                    <Text style={styles.levelBadgeText}>{levelCfg.label}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
           ) : (
             <View style={{ padding: 20, alignItems: "center" }}>
-              {isGenerating ? (
-                <>
-                  <ActivityIndicator size="large" color="#1a73e8" />
-                  <Text style={{ marginTop: 10, color: "#666" }}>Preparing your tailored sessions...</Text>
-                </>
-              ) : (
-                <Text style={{ color: "#666" }}>No sessions available. Click to generate.</Text>
-              )}
+              <Text style={{ color: "#666" }}>No {LEVEL_CONFIG[selectedLevel].label.toLowerCase()} modules generated yet.</Text>
+              <Text style={{ color: "#999", fontSize: 12, marginTop: 5 }}>Run the generator script to create all modules.</Text>
             </View>
           )}
         </View>
@@ -422,6 +427,36 @@ const styles = StyleSheet.create({
     fontSize: 24,
     color: "#ccc",
     fontWeight: "300",
+  },
+  levelTabs: {
+    flexDirection: "row",
+    marginBottom: 15,
+  },
+  levelTab: {
+    flex: 1,
+    paddingVertical: 10,
+    marginHorizontal: 4,
+    borderRadius: 10,
+    backgroundColor: "#fff",
+    borderWidth: 2,
+    borderColor: "#e0e0e0",
+    alignItems: "center",
+  },
+  levelTabText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#666",
+  },
+  levelBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  levelBadgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "bold",
+    textTransform: "uppercase",
   },
 });
 

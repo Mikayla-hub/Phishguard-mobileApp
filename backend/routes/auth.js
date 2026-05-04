@@ -2,14 +2,52 @@ const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const nodemailer = require('nodemailer');
 const db = require('../config/database');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const BCRYPT_ROUNDS = 12;
+
+// Email transporter (configure SMTP credentials in .env)
+const transporter = nodemailer.createTransport({
+  service: process.env.EMAIL_SERVICE || 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+// Validate email format
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+// Validate password strength
+const validatePassword = (password) => {
+  const errors = [];
+  if (password.length < 8)         errors.push('at least 8 characters');
+  if (!/[A-Z]/.test(password))     errors.push('one uppercase letter');
+  if (!/[a-z]/.test(password))     errors.push('one lowercase letter');
+  if (!/[0-9]/.test(password))     errors.push('one number');
+  if (!/[^A-Za-z0-9]/.test(password)) errors.push('one special character (!@#$% etc.)');
+  return errors;
+};
 
 // Handle Signup
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
+
+    // Validate email format
+    if (!email || !isValidEmail(email)) {
+      return res.status(400).json({ error: 'Please enter a valid email address.' });
+    }
+
+    // Validate password strength
+    const pwErrors = validatePassword(password || '');
+    if (pwErrors.length > 0) {
+      return res.status(400).json({ error: `Password must contain: ${pwErrors.join(', ')}.` });
+    }
+
     const database = db.getDb();
     
     // Check if user already exists in Firebase Realtime Database
@@ -20,11 +58,12 @@ router.post('/register', async (req, res) => {
     }
 
     const userId = uuidv4();
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const newUser = {
       id: userId,
       name,
       email,
-      password, // In a production app, use bcrypt to hash this!
+      password: hashedPassword,
       role: 'user',
       createdAt: new Date().toISOString()
     };
@@ -58,7 +97,8 @@ router.post('/login', async (req, res) => {
     const userId = Object.keys(usersData)[0];
     const user = usersData[userId];
 
-    if (user.password !== password) {
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -67,6 +107,124 @@ router.post('/login', async (req, res) => {
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+/**
+ * POST /api/auth/forgot-password
+ * Generates a 6-digit OTP, stores it in Firebase with a 15-min expiry, and emails it to the user.
+ */
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email || !isValidEmail(email)) {
+      return res.status(400).json({ error: 'Please provide a valid email address.' });
+    }
+
+    const database = db.getDb();
+    const snapshot = await database.ref('users').orderByChild('email').equalTo(email).once('value');
+
+    // Always respond success to prevent user enumeration
+    if (!snapshot.exists()) {
+      return res.json({ message: 'If that email is registered, a reset code has been sent.' });
+    }
+
+    const userId = Object.keys(snapshot.val())[0];
+    const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
+    const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutes from now
+
+    // Store OTP in Firebase
+    await database.ref(`password_resets/${userId}`).set({ otp, expiresAt, email });
+
+    // Send email
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.warn('[Auth] EMAIL_USER / EMAIL_PASS not set in .env — OTP not sent via email.');
+      // In dev mode, log OTP to console so you can test without email config
+      console.log(`[Auth][DEV] OTP for ${email}: ${otp}`);
+    } else {
+      await transporter.sendMail({
+        from: `"PhishGuard Security" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: 'Your PhishGuard Password Reset Code',
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden">
+            <div style="background:#1a73e8;padding:24px;text-align:center">
+              <h2 style="color:#fff;margin:0">🛡️ PhishGuard</h2>
+            </div>
+            <div style="padding:32px">
+              <h3 style="color:#333">Password Reset Request</h3>
+              <p style="color:#555">Use the code below to reset your password. It expires in <strong>15 minutes</strong>.</p>
+              <div style="background:#f0f4ff;border-radius:8px;padding:20px;text-align:center;margin:24px 0">
+                <span style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#1a73e8">${otp}</span>
+              </div>
+              <p style="color:#888;font-size:13px">If you did not request this, you can safely ignore this email. Your password will not change.</p>
+            </div>
+          </div>
+        `,
+      });
+    }
+
+    res.json({ message: 'If that email is registered, a reset code has been sent.' });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Failed to process request. Please try again.' });
+  }
+});
+
+/**
+ * POST /api/auth/reset-password
+ * Validates the OTP and updates the user's password.
+ */
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({ error: 'Email, OTP, and new password are required.' });
+    }
+
+    const pwErrors = validatePassword(newPassword);
+    if (pwErrors.length > 0) {
+      return res.status(400).json({ error: `Password must contain: ${pwErrors.join(', ')}.` });
+    }
+
+    const database = db.getDb();
+
+    // Find user by email
+    const userSnap = await database.ref('users').orderByChild('email').equalTo(email).once('value');
+    if (!userSnap.exists()) {
+      return res.status(400).json({ error: 'Invalid reset request.' });
+    }
+
+    const userId = Object.keys(userSnap.val())[0];
+
+    // Validate OTP
+    const resetSnap = await database.ref(`password_resets/${userId}`).once('value');
+    const resetData = resetSnap.val();
+
+    if (!resetData) {
+      return res.status(400).json({ error: 'No reset request found. Please request a new code.' });
+    }
+    if (resetData.otp !== otp) {
+      return res.status(400).json({ error: 'Incorrect reset code. Please check and try again.' });
+    }
+    if (Date.now() > resetData.expiresAt) {
+      await database.ref(`password_resets/${userId}`).remove();
+      return res.status(400).json({ error: 'Reset code has expired. Please request a new one.' });
+    }
+
+    // Update password
+    const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await database.ref(`users/${userId}`).update({ password: hashedPassword });
+
+    // Delete the used OTP
+    await database.ref(`password_resets/${userId}`).remove();
+
+    res.json({ message: 'Password updated successfully. You can now log in.' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Failed to reset password. Please try again.' });
   }
 });
 

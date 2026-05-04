@@ -12,9 +12,9 @@ const db = require('../config/database');
 const { authenticate } = require('../middleware/auth');
 
 /**
- * Required dynamic topics per the new curriculum
+ * Required dynamic topics and difficulty levels for the curriculum
  */
-const REQUIRED_TOPICS = [
+const BASE_TOPICS = [
   'Security Awareness Training',
   'Security Culture',
   'Social Engineering',
@@ -25,6 +25,16 @@ const REQUIRED_TOPICS = [
   'Multi-Factor Authentication',
   'Global Compliance and Regulations'
 ];
+
+const DIFFICULTY_LEVELS = ['beginner', 'intermediate', 'expert'];
+
+// Build full required list: 9 topics × 3 levels = 27 modules
+const REQUIRED_TOPICS = [];
+for (const topic of BASE_TOPICS) {
+  for (const level of DIFFICULTY_LEVELS) {
+    REQUIRED_TOPICS.push({ topic, level });
+  }
+}
 
 /**
  * Helper to get all modules from DB
@@ -41,7 +51,7 @@ const getAllModulesFromDb = async (database) => {
       }
     });
   }
-  
+
   // Sort temporally to enforce chronological order, so random UUID strings don't override new modules
   modules.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
   return modules;
@@ -190,18 +200,18 @@ IMPORTANT RULES:
     let text = raw.trim();
     // Strip markdown code blocks if present
     text = text.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '').trim();
-    
+
     // Extract everything between the first { and last }
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
     if (start !== -1 && end !== -1) {
       text = text.substring(start, end + 1);
     }
-    
+
     // Remove invalid control characters but keep structural newlines and tabs
     // Note: We don't replace \n with \\n globally because that destroys JSON structure
     text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
-    
+
     return text;
   };
 
@@ -225,9 +235,9 @@ IMPORTANT RULES:
       parse: (res) => res.data.candidates[0].content.parts[0].text,
     },
     {
-      name: 'gemini-1.5-flash',
+      name: 'gemini-2.0-flash-lite',
       call: () => axios.post(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`,
         { contents: [{ parts: [{ text: prompt }] }], generationConfig: { response_mime_type: 'application/json' } },
         { timeout: 60000 }
       ),
@@ -323,6 +333,7 @@ router.get('/modules', authenticate, async (req, res) => {
     const modulesWithProgress = allModules.map(module => ({
       id: module.id,
       title: module.title,
+      topic: module.topic || module.title,
       description: module.description,
       duration: module.duration,
       difficulty: module.difficulty,
@@ -330,17 +341,21 @@ router.get('/modules', authenticate, async (req, res) => {
       totalLessons: module.lessons ? module.lessons.length : 0,
       progress: {
         completed_lessons: progressMap[module.id]?.completed_lessons || 0,
-        average_score: progressMap[module.id]?.score_count > 0 
-          ? progressMap[module.id].score_sum / progressMap[module.id].score_count 
+        average_score: progressMap[module.id]?.score_count > 0
+          ? progressMap[module.id].score_sum / progressMap[module.id].score_count
           : null
       }
     }));
 
-    // Determine which REQUIRED_TOPICS haven't been generated yet
-    const existingTopics = allModules.map(m => (m.title || m.topic || '').toLowerCase());
-    const pendingTopics = REQUIRED_TOPICS.filter(topic => 
-      !existingTopics.some(existing => existing.includes(topic.toLowerCase()))
-    );
+    // Determine which REQUIRED topic+level combos haven't been generated yet
+    const existingKeys = allModules.map(m => {
+      const topic = (m.topic || m.title || '').toLowerCase();
+      const level = (m.difficulty || 'beginner').toLowerCase();
+      return `${topic}::${level}`;
+    });
+    const pendingTopics = REQUIRED_TOPICS.filter(({ topic, level }) =>
+      !existingKeys.some(key => key.includes(topic.toLowerCase()) && key.includes(level))
+    ).map(({ topic, level }) => ({ topic, level }));
 
     res.json({ modules: modulesWithProgress, pendingTopics });
   } catch (error) {
@@ -355,23 +370,31 @@ router.get('/modules', authenticate, async (req, res) => {
  */
 router.post('/modules/generate', authenticate, async (req, res) => {
   try {
-    const { topic } = req.body;
-    if (!topic || !REQUIRED_TOPICS.includes(topic)) {
-      return res.status(400).json({ error: 'Invalid or missing topic requested.' });
+    const { topic, level = 'beginner' } = req.body;
+    const validTopic = BASE_TOPICS.includes(topic);
+    const validLevel = DIFFICULTY_LEVELS.includes(level);
+    if (!topic || !validTopic || !validLevel) {
+      return res.status(400).json({ error: 'Invalid or missing topic/level requested.' });
     }
 
     const database = db.getDb();
 
-    const existingSnap = await database.ref('learning_modules').orderByChild('topic').equalTo(topic).once('value');
+    // Check if this topic+level combo already exists
+    const moduleId = `${topic.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${level}`;
+    const existingSnap = await database.ref(`learning_modules/${moduleId}`).once('value');
     if (existingSnap.exists()) {
-      const existing = Object.values(existingSnap.val())[0];
-      return res.json({ message: 'Module already exists', module: existing });
+      return res.json({ message: 'Module already exists', module: existingSnap.val() });
     }
 
-    const newModule = await generateModuleWithAI(topic);
+    const fullTopic = `${topic} (${level.charAt(0).toUpperCase() + level.slice(1)} Level)`;
+    const newModule = await generateModuleWithAI(fullTopic);
     newModule.topic = topic;
-    
-    await database.ref(`learning_modules/${newModule.id}`).set(newModule);
+    newModule.difficulty = level;
+    newModule.level = level.charAt(0).toUpperCase() + level.slice(1);
+    newModule.id = moduleId;
+    newModule.createdAt = new Date().toISOString();
+
+    await database.ref(`learning_modules/${moduleId}`).set(newModule);
 
     res.status(201).json({ message: 'Module generated and saved dynamically.', module: newModule });
   } catch (error) {
@@ -390,13 +413,13 @@ router.post('/modules/generate-unique', authenticate, async (req, res) => {
 
     // Direct the unique module generator to use the requested core security topics
     const baseTopics = [...REQUIRED_TOPICS];
-    
+
     // Create a unique topic by appending a random session ID
     const randomBase = baseTopics[Math.floor(Math.random() * baseTopics.length)];
     const uniqueTopic = `${randomBase} (Session ${Math.random().toString(36).substring(2, 8).toUpperCase()})`;
 
     const newModule = await generateModuleWithAI(uniqueTopic);
-    
+
     // Ensure unique tracking identifiers
     newModule.id = uuidv4();
     newModule.title = uniqueTopic;
@@ -613,7 +636,7 @@ router.post('/modules/:moduleId/lessons/:lessonId/submit', authenticate, [
     const progSnap = await database.ref(`learning_progress/${progressId}`).once('value');
     let currentScore = score;
     let currentTime = timeSpent;
-    
+
     if (progSnap.exists()) {
       const p = progSnap.val();
       if (p.score > score) currentScore = p.score;
@@ -655,7 +678,7 @@ router.post('/progress', authenticate, async (req, res) => {
   try {
     const { moduleId, score, totalQuestions, checklistScore } = req.body;
     const database = db.getDb();
-    
+
     const progressId = `${req.user.id}_${moduleId}`;
     await database.ref(`learning_progress/${progressId}`).set({
       id: progressId,
@@ -668,7 +691,7 @@ router.post('/progress', authenticate, async (req, res) => {
       completed_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     });
-    
+
     await checkLearningAchievements(req.user.id, database);
     res.json({ message: 'Progress saved successfully' });
   } catch (error) {
@@ -689,7 +712,7 @@ router.get('/progress', authenticate, async (req, res) => {
     const totalLessons = allModules.reduce((acc, m) => acc + (m.lessons ? m.lessons.length : 0), 0);
 
     const progressSnap = await database.ref('learning_progress').orderByChild('user_id').equalTo(req.user.id).once('value');
-    
+
     let completed_lessons = 0;
     let score_sum = 0;
     let score_count = 0;
@@ -703,12 +726,12 @@ router.get('/progress', authenticate, async (req, res) => {
           moduleProgressMap[p.module_id] = { lessons_started: 0, lessons_completed: 0, score_sum: 0, score_count: 0 };
         }
         moduleProgressMap[p.module_id].lessons_started++;
-        
+
         if (p.status === 'completed') {
           completed_lessons++;
           moduleProgressMap[p.module_id].lessons_completed++;
         }
-        
+
         if (p.score !== null && p.score !== undefined) {
           score_sum += p.score;
           score_count++;
@@ -766,7 +789,7 @@ router.get('/progress', authenticate, async (req, res) => {
  */
 async function checkLearningAchievements(userId, database) {
   const progressSnap = await database.ref('learning_progress').orderByChild('user_id').equalTo(userId).once('value');
-  
+
   let completed = 0;
   const modules = new Set();
   let score_sum = 0;

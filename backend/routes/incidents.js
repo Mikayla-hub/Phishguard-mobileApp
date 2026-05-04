@@ -13,8 +13,9 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 
 /**
  * AI Generation Logic for Incident Procedures
+ * Now receives the full incident context for accurate, real-time response plans.
  */
-async function generateProcedureWithAI(threatType) {
+async function generateProcedureWithAI(context) {
   const geminiKey = (process.env.GEMINI_API_KEY || process.env.AI_API_KEY || '').trim();
   const groqKey = process.env.GROQ_API_KEY;
 
@@ -22,20 +23,35 @@ async function generateProcedureWithAI(threatType) {
     throw new Error('AI API Key is missing. Please set GEMINI_API_KEY in your .env file.');
   }
 
-  const prompt = `You are a world-class cybersecurity incident response expert. Generate a step-by-step incident response procedure for a threat of type: "${threatType}".
-  Output ONLY valid JSON strictly following this schema:
-  {
-    "title": "Clear Title (e.g., Phishing Email Response)",
-    "severity": "low|medium|high|critical",
-    "steps": [
-      { "step": 1, "action": "Clear immediate action", "duration": "Immediate" },
-      { "step": 2, "action": "Next step", "duration": "5 minutes" }
-    ],
-    "recovery": [
-      "Recovery action 1",
-      "Recovery action 2"
-    ]
-  }`;
+  const { threatType, severity, description, riskScore } = context;
+
+  const prompt = `You are a world-class cybersecurity incident response expert. A real-time threat has just been detected by an AI phishing scanner. Generate a **specific, actionable** step-by-step incident response procedure tailored to this exact threat.
+
+THREAT DETAILS:
+- Type: ${threatType}
+- Severity: ${severity || 'unknown'}
+- Risk Score: ${riskScore || 'N/A'}
+- Analysis Details: ${description || 'No additional details'}
+
+REQUIREMENTS:
+- Each step must directly address the specific threat indicators described above.
+- Include concrete actions (e.g., "Block the sender domain xyz.com" not just "Block the sender").
+- Steps should progress from immediate containment → investigation → remediation → recovery.
+- Generate 5-8 steps minimum for high/critical threats, 3-5 for low/medium.
+
+Output ONLY valid JSON strictly following this schema:
+{
+  "title": "Specific Title Matching This Exact Threat",
+  "severity": "${severity || 'medium'}",
+  "steps": [
+    { "step": 1, "action": "Specific immediate action for this threat", "duration": "Immediate" },
+    { "step": 2, "action": "Next investigation step", "duration": "5 minutes" }
+  ],
+  "recovery": [
+    "Specific recovery action 1",
+    "Specific recovery action 2"
+  ]
+}`;
 
   const cleanJson = (raw) => {
     let text = raw.trim();
@@ -69,9 +85,9 @@ async function generateProcedureWithAI(threatType) {
       parse: (res) => res.data.candidates[0].content.parts[0].text,
     },
     {
-      name: 'gemini-1.5-flash',
+      name: 'gemini-2.0-flash-lite',
       call: () => axios.post(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${geminiKey}`,
         { contents: [{ parts: [{ text: prompt }] }], generationConfig: { response_mime_type: 'application/json' } },
         { timeout: 60000 }
       ),
@@ -232,9 +248,31 @@ router.post('/', authenticate, [
     const { title, incidentType, severity, description, affectedSystems } = req.body;
     const database = db.getDb();
 
-    // Dynamically get or generate the step-by-step procedure via AI
-    const procedure = await getOrGenerateProcedure(database, incidentType);
+    // Extract risk score from incidentType string (e.g. "Phishing Email Detection (85% Risk)")
+    const riskMatch = incidentType.match(/\((\d+)%/);
+    const riskScore = riskMatch ? `${riskMatch[1]}%` : 'N/A';
+
+    // Generate a REAL-TIME, unique AI procedure for this specific incident
+    console.log(`🤖 Generating real-time AI response for: ${incidentType}`);
+    console.log(`   Severity: ${severity} | Risk: ${riskScore}`);
+    console.log(`   Details: ${(description || '').substring(0, 100)}...`);
+
+    const procedure = await generateProcedureWithAI({
+      threatType: incidentType,
+      severity,
+      description,
+      riskScore,
+    });
+
     const incidentId = uuidv4();
+    const procedureId = `proc-${incidentId}`;
+
+    // Save the unique procedure tied to this incident
+    await database.ref(`procedures/${procedureId}`).set({
+      ...procedure,
+      generatedAt: new Date().toISOString(),
+      incidentId,
+    });
 
     const newIncident = {
       id: incidentId,
@@ -242,7 +280,7 @@ router.post('/', authenticate, [
       title,
       description: description || '',
       severity,
-      incidentType: procedure.id,
+      incidentType: procedureId,
       affectedSystems: affectedSystems || [],
       timeline: [{
         timestamp: new Date().toISOString(),
@@ -255,12 +293,14 @@ router.post('/', authenticate, [
     
     await database.ref(`incidents/${incidentId}`).set(newIncident);
 
+    console.log(`✅ Real-time procedure generated and saved as: ${procedureId}`);
+
     res.status(201).json({
       message: 'Incident reported successfully',
       incident: {
         id: incidentId,
         title,
-        incidentType: procedure.id,
+        incidentType: procedureId,
         severity,
         status: 'open'
       },

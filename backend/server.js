@@ -19,6 +19,20 @@ const incidentRoutes = require('./routes/incidents');
 // Import database
 const db = require('./config/database');
 const path = require('path');
+const os = require('os');
+
+// Auto-detect current LAN IPv4 address
+function getLanIp() {
+  const interfaces = os.networkInterfaces();
+  for (const iface of Object.values(interfaces)) {
+    for (const alias of iface) {
+      if (alias.family === 'IPv4' && !alias.internal) {
+        return alias.address;
+      }
+    }
+  }
+  return 'localhost';
+}
 const mlService = require('./services/mlService');
 
 const app = express();
@@ -110,13 +124,16 @@ db.initialize()
     mlService.initializeFromCSVs(csvConfigs, modelPath).catch(console.error);
 
     app.listen(PORT, '0.0.0.0', () => {
+      const lanIp = getLanIp();
       console.log('========================================');
       console.log('   PhishGuard Backend Server');
       console.log('========================================');
       console.log(`Server running on http://0.0.0.0:${PORT}`);
-      console.log(`LAN access:    http://192.168.1.17:${PORT}/api/health`);
+      console.log(`LAN access:    http://${lanIp}:${PORT}/api/health`);
       console.log(`Health check:  http://localhost:${PORT}/api/health`);
       console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log('========================================');
+      console.log(`📱 Update services/api.js → YOUR_LOCAL_IP = "${lanIp}"`);
       console.log('========================================');
     });
   })

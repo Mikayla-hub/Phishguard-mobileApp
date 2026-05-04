@@ -222,13 +222,18 @@ class MLService {
       const pathname = parsed.pathname;
       const fullUrl = url;
 
-      // --- Suspicious TLDs (common in phishing) ---
-      const badTlds = ['.tk', '.ml', '.ga', '.cf', '.gq', '.xyz', '.top', '.club',
-                       '.work', '.site', '.online', '.live', '.click', '.link',
-                       '.info', '.biz', '.ru', '.co', '.pw'];
-      if (badTlds.some(t => hostname.endsWith(t))) {
-        score += 0.35;
-        reasons.push('Uses a high-risk top-level domain commonly associated with phishing.');
+      // --- Suspicious TLDs — tiered risk with whitelist ---
+      const HIGH_RISK_TLDS = ['.tk', '.ml', '.ga', '.cf', '.gq', '.pw'];
+      const MEDIUM_RISK_TLDS = ['.xyz', '.top', '.club', '.work', '.site', '.online', '.live', '.click', '.link'];
+      const TLD_WHITELIST = new Set(['t.co', 'abc.xyz', 'icio.us', 'del.icio.us']);
+      if (!TLD_WHITELIST.has(hostname)) {
+        if (HIGH_RISK_TLDS.some(t => hostname.endsWith(t))) {
+          score += 0.30;
+          reasons.push('Uses a high-risk free TLD strongly associated with phishing domains.');
+        } else if (MEDIUM_RISK_TLDS.some(t => hostname.endsWith(t))) {
+          score += 0.12;
+          reasons.push('Uses a medium-risk TLD commonly seen in phishing campaigns.');
+        }
       }
 
       // --- IP address instead of domain ---
@@ -237,19 +242,28 @@ class MLService {
         reasons.push('URL uses a raw IP address instead of a domain name.');
       }
 
-      // --- Misleading brand in subdomain/path but not the actual domain ---
-      const brands = ['paypal', 'amazon', 'google', 'microsoft', 'apple', 'netflix',
-                      'facebook', 'instagram', 'ebay', 'bank', 'secure', 'login',
-                      'account', 'verify', 'update', 'cbz', 'ecocash', 'zimra',
-                      'econet', 'mukuru', 'safaricom', 'mpesa', 'fnb', 'barclays'];
+      // --- Brand impersonation: only genuine brand names, not generic words ---
+      const BRAND_NAMES = ['paypal', 'amazon', 'google', 'microsoft', 'apple', 'netflix',
+        'facebook', 'instagram', 'ebay', 'cbz', 'ecocash', 'zimra',
+        'econet', 'mukuru', 'safaricom', 'mpesa', 'fnb', 'barclays'];
       const domainParts = hostname.split('.');
       const apex = domainParts.slice(-2).join('.');
-      brands.forEach(brand => {
-        if (hostname.includes(brand) && !apex.startsWith(brand)) {
-          score += 0.3;
-          reasons.push(`Impersonates "${brand}" in the subdomain to appear legitimate.`);
+      let brandHits = 0;
+      BRAND_NAMES.forEach(brand => {
+        if (hostname.includes(brand) && !apex.includes(brand)) {
+          brandHits++;
+          reasons.push(`Impersonates "${brand}" brand — not the official domain.`);
         }
       });
+      if (brandHits > 0) score += Math.min(0.40, brandHits * 0.25);
+
+      // --- Sensitive keywords in hostname only (capped, separate from path check below) ---
+      const HOSTNAME_KW = ['login', 'signin', 'account', 'verify', 'secure', 'update', 'bank', 'payment'];
+      const hostnameKwHits = HOSTNAME_KW.filter(k => hostname.includes(k)).length;
+      if (hostnameKwHits > 0) {
+        score += Math.min(0.12, hostnameKwHits * 0.04);
+        reasons.push('Hostname contains credential-harvesting keywords.');
+      }
 
       // --- Excessive subdomains ---
       if (domainParts.length > 4) {
@@ -265,7 +279,7 @@ class MLService {
 
       // --- URL shorteners ---
       const shorteners = ['bit.ly', 'tinyurl.com', 't.co', 'goo.gl', 'ow.ly',
-                          'is.gd', 'buff.ly', 'adf.ly', 'short.io'];
+        'is.gd', 'buff.ly', 'adf.ly', 'short.io'];
       if (shorteners.some(s => hostname === s || hostname.endsWith('.' + s))) {
         score += 0.25;
         reasons.push('Uses a URL shortener to disguise the true destination.');
@@ -273,14 +287,17 @@ class MLService {
 
       // --- HTTP (no HTTPS) for sensitive-looking pages ---
       if (parsed.protocol === 'http:' &&
-          /(login|account|secure|verify|bank|payment|password)/.test(lower)) {
+        /(login|account|secure|verify|bank|payment|password)/.test(lower)) {
         score += 0.3;
         reasons.push('Uses insecure HTTP for a page that requests sensitive information.');
       }
 
-      // --- Suspicious keywords in path/query ---
-      if (/(verify|confirm|secure|update|login|signin|account|password|credential|reset)/.test(lower)) {
-        score += 0.15;
+      // --- Credential keywords in URL path/query only (capped to avoid double-counting hostname) ---
+      const pathQuery = (pathname + parsed.search).toLowerCase();
+      const pathKwHits = ['verify', 'confirm', 'password', 'credential', 'reset']
+        .filter(k => pathQuery.includes(k)).length;
+      if (pathKwHits > 0) {
+        score += Math.min(0.10, pathKwHits * 0.05);
         reasons.push('Path contains credential-harvesting keywords.');
       }
 
@@ -308,10 +325,10 @@ class MLService {
     }
 
     const riskLevel = score >= 0.75 ? 'critical'
-                    : score >= 0.5  ? 'high'
-                    : score >= 0.25 ? 'medium'
-                    : score >= 0.1  ? 'low'
-                    : 'safe';
+      : score >= 0.5 ? 'high'
+        : score >= 0.25 ? 'medium'
+          : score >= 0.1 ? 'low'
+            : 'safe';
 
     return {
       riskLevel,
@@ -331,7 +348,7 @@ class MLService {
 
     // Detect if input is a URL
     const isUrl = /^https?:\/\//i.test(safeText) ||
-                  /^(www\.|[a-z0-9-]+\.[a-z]{2,})/i.test(safeText);
+      /^(www\.|[a-z0-9-]+\.[a-z]{2,})/i.test(safeText);
 
     if (isUrl) {
       return this._analyzeUrl(safeText);
@@ -346,17 +363,38 @@ class MLService {
     try {
       const predictedLabel = this.classifier.classify(safeText);
       const classifications = this.classifier.getClassifications(safeText);
-      const confidence = classifications.find(c => c.label === predictedLabel)?.value || 0;
 
-      const riskScore = predictedLabel === 'phishing'
-        ? 0.7 + (confidence * 0.3)
-        : Math.max(0, 0.3 - (confidence * 0.3));
+      // Continuous symmetric score — no artificial 0.3/0.7 cliff
+      const phishProb = classifications.find(c => c.label === 'phishing')?.value ?? 0;
+      const safeProb = classifications.find(c => c.label === 'safe')?.value ?? 0;
+      const riskScore = phishProb / ((phishProb + safeProb) || 1);
+
+      // Low-confidence gating: flag uncertain predictions rather than forcing a verdict
+      const confidence = classifications.find(c => c.label === predictedLabel)?.value || 0;
+      const CONFIDENCE_THRESHOLD = 0.65;
+      if (confidence < CONFIDENCE_THRESHOLD) {
+        return {
+          riskLevel: 'medium',
+          riskScore: 0.5,
+          indicators: [
+            `Model confidence is low (${(confidence * 100).toFixed(0)}%). Manual review recommended.`,
+            'Content shows mixed signals — cannot determine with confidence.',
+          ],
+          recommendations: ['Verify this content through official channels before interacting.'],
+        };
+      }
+
+      const riskLevel = riskScore >= 0.75 ? 'critical'
+        : riskScore >= 0.5 ? 'high'
+          : riskScore >= 0.25 ? 'medium'
+            : riskScore >= 0.1 ? 'low'
+              : 'safe';
 
       const reasons = [];
       const lower = safeText.toLowerCase();
 
       if (predictedLabel === 'phishing') {
-        reasons.push(`AI detected known phishing patterns with ${(confidence * 100).toFixed(1)}% confidence.`);
+        reasons.push(`AI detected phishing patterns with ${(confidence * 100).toFixed(1)}% confidence.`);
         if (/(urgent|immediate|act now|suspended|locked|verify|alert)/.test(lower))
           reasons.push('Uses urgent or threatening language to create panic.');
         if (/(password|login|credential|ssn|credit card|bank|account|pin|otp)/.test(lower))
@@ -373,12 +411,14 @@ class MLService {
       }
 
       return {
-        riskLevel: predictedLabel === 'phishing' ? 'high' : 'safe',
+        riskLevel,
         riskScore: Math.max(0, Math.min(1, riskScore)),
         indicators: reasons,
-        recommendations: predictedLabel === 'phishing'
+        recommendations: riskScore >= 0.5
           ? ['High probability of phishing. Do not interact with this content.']
-          : ['Content appears safe, but always remain vigilant.'],
+          : riskScore >= 0.25
+            ? ['Proceed with caution — some phishing signals detected.']
+            : ['Content appears safe, but always remain vigilant.'],
       };
     } catch (error) {
       console.error('⚠️ ML Classification Error:', error.message);

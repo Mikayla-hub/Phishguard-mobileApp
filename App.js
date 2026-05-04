@@ -15,6 +15,8 @@ import ReportPhishingScreen from "./myscreens/ReportPhishingScreen";
 import IncidentResponseScreen from "./myscreens/IncidentResponseScreen";
 import LearningModuleScreen from "./myscreens/LearningModuleScreen";
 import SettingsScreen from "./myscreens/SettingsScreen";
+import ForgotPasswordScreen from "./myscreens/ForgotPasswordScreen";
+import ResetPasswordScreen from "./myscreens/ResetPasswordScreen";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
 const Stack = createNativeStackNavigator();
@@ -52,6 +54,14 @@ export default function App() {
           <Stack.Screen
             name="SettingsScreen"
             component={SettingsScreen}
+          />
+          <Stack.Screen
+            name="ForgotPasswordScreen"
+            component={ForgotPasswordScreen}
+          />
+          <Stack.Screen
+            name="ResetPasswordScreen"
+            component={ResetPasswordScreen}
           />
         </Stack.Navigator>
       </NavigationContainer>

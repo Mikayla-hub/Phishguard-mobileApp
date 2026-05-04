@@ -7,7 +7,11 @@ async function analyzeUrl(url) {
     const res = await axios.post(`${ML_BASE_URL}/ml/url`, { url });
     return res.data;
   } catch (error) {
-    console.warn("ML URL analysis failed", error.message || error);
+    if (error.code === 'ECONNREFUSED') {
+      console.warn("⚠️ Python ML server offline (port 8000). Skipping RF analysis.");
+    } else {
+      console.warn("⚠️ ML URL analysis failed:", error.message);
+    }
     return null;
   }
 }
@@ -18,7 +22,11 @@ async function analyzeEmail({ subject = "", body = "", sender = "" }) {
     const res = await axios.post(`${ML_BASE_URL}/ml/email`, { text });
     return res.data;
   } catch (error) {
-    console.warn("ML email analysis failed", error.message || error);
+    if (error.code === 'ECONNREFUSED') {
+      console.warn("⚠️ Python ML server offline (port 8000). Skipping RF analysis.");
+    } else {
+      console.warn("⚠️ ML email analysis failed:", error.message);
+    }
     return null;
   }
 }

@@ -1,31 +1,49 @@
 import { useState } from "react";
 import {
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  ActivityIndicator,
 } from "react-native";
 import { login, setAuthToken } from "../services/api";
 import { Mail, Lock, Eye, EyeOff } from "lucide-react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
 const LoginScreen = ({ navigation }) => {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail]               = useState("");
+  const [password, setPassword]         = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading]       = useState(false);
+  const [emailError, setEmailError]     = useState("");
+
+  const handleEmailChange = (text) => {
+    setEmail(text);
+    if (text.length > 0 && !isValidEmail(text)) {
+      setEmailError("Please enter a valid email address.");
+    } else {
+      setEmailError("");
+    }
+  };
 
   const handleLogin = async () => {
-    if (email === "" || password === "") {
+    if (!email || !password) {
       Alert.alert("Error", "Please enter both email and password.");
+      return;
+    }
+    if (!isValidEmail(email)) {
+      Alert.alert("Invalid Email", "Please enter a valid email address.");
       return;
     }
 
     try {
-      console.log(`\n[Troubleshooting] Attempting login for: ${email}`);
+      setIsLoading(true);
       const response = await login(email, password);
       if (response?.token) {
         setAuthToken(response.token);
@@ -34,17 +52,14 @@ const LoginScreen = ({ navigation }) => {
           await AsyncStorage.setItem("username", response.user.name);
         }
       }
-      console.log("[Troubleshooting] Login successful.");
       navigation.replace("Homescreen");
     } catch (error) {
-      console.error("\n[Troubleshooting] Login error caught!");
-      console.error("-> Message:", error?.message);
-      console.error("-> Name:", error?.name);
-      console.error("-> Full Error:", error);
       Alert.alert(
-        "Login failed",
+        "Login Failed",
         error?.message || "Unable to log in. Please check your credentials and try again."
       );
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -53,33 +68,37 @@ const LoginScreen = ({ navigation }) => {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
     >
-      {/* App Logo/Header Area */}
+      {/* Header */}
       <View style={styles.headerContainer}>
         <Text style={styles.appName}>CyberGuardian</Text>
-        <Text style={styles.tagline}>AI-Powered Phishing Response and Learning Hub</Text>
+        <Text style={styles.tagline}>AI-Powered Phishing Response & Learning Hub</Text>
       </View>
 
-      {/* Login Form */}
+      {/* Form */}
       <View style={styles.formContainer}>
+        {/* Email */}
         <Text style={styles.label}>Email Address</Text>
-        <View style={styles.inputContainer}>
-          <Mail size={20} color="#666" style={styles.leadingIcon} />
+        <View style={[styles.inputContainer, emailError ? styles.inputError : null]}>
+          <Mail size={20} color={emailError ? "#d93025" : "#666"} style={styles.leadingIcon} />
           <TextInput
             style={styles.input}
             placeholder="user@example.com"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={handleEmailChange}
             keyboardType="email-address"
             autoCapitalize="none"
+            autoCorrect={false}
           />
         </View>
+        {emailError ? <Text style={styles.fieldError}>{emailError}</Text> : null}
 
-        <Text style={styles.label}>Password</Text>
+        {/* Password */}
+        <Text style={[styles.label, { marginTop: 16 }]}>Password</Text>
         <View style={styles.inputContainer}>
           <Lock size={20} color="#666" style={styles.leadingIcon} />
           <TextInput
             style={styles.input}
-            placeholder="********"
+            placeholder="••••••••"
             value={password}
             onChangeText={setPassword}
             secureTextEntry={!showPassword}
@@ -89,19 +108,21 @@ const LoginScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity onPress={handleLogin} style={styles.loginButton}>
-          <Text style={styles.loginButtonText}>Secure Login</Text>
+        {/* Login Button */}
+        <TouchableOpacity onPress={handleLogin} style={styles.loginButton} disabled={isLoading}>
+          {isLoading
+            ? <ActivityIndicator color="#fff" />
+            : <Text style={styles.loginButtonText}>Secure Login</Text>
+          }
         </TouchableOpacity>
 
-      
-        <TouchableOpacity
-          onPress={() => console.log("Navigate to Forgot Password")}
-        >
+        {/* Forgot Password */}
+        <TouchableOpacity onPress={() => navigation.navigate("ForgotPasswordScreen")}>
           <Text style={styles.forgotPassword}>Forgot Password?</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Footer / Sign Up Link */}
+      {/* Footer */}
       <View style={styles.footer}>
         <Text style={styles.footerText}>New to CyberGuardian? </Text>
         <TouchableOpacity onPress={() => navigation.navigate("SignUpScreen")}>
@@ -115,7 +136,7 @@ const LoginScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f7fa", // Light, clean background
+    backgroundColor: "#f5f7fa",
     justifyContent: "center",
     padding: 20,
   },
@@ -126,20 +147,21 @@ const styles = StyleSheet.create({
   appName: {
     fontSize: 32,
     fontWeight: "bold",
-    color: "#1a73e8", // Trustworthy Blue
+    color: "#1a73e8",
     letterSpacing: 1,
   },
   tagline: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#5f6368",
-    marginTop: 5,
+    marginTop: 6,
+    textAlign: "center",
   },
   formContainer: {
     backgroundColor: "#ffffff",
     padding: 20,
-    borderRadius: 10,
-    elevation: 4, // Android shadow
-    shadowColor: "#000", // iOS shadow
+    borderRadius: 12,
+    elevation: 4,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -148,8 +170,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: "#333",
-    marginBottom: 5,
-    marginTop: 10,
+    marginBottom: 6,
   },
   inputContainer: {
     flexDirection: "row",
@@ -158,6 +179,9 @@ const styles = StyleSheet.create({
     borderColor: "#ddd",
     borderRadius: 8,
     backgroundColor: "#fafafa",
+  },
+  inputError: {
+    borderColor: "#d93025",
   },
   leadingIcon: {
     marginLeft: 12,
@@ -170,23 +194,30 @@ const styles = StyleSheet.create({
   eyeIcon: {
     padding: 12,
   },
+  fieldError: {
+    color: "#d93025",
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 2,
+  },
   loginButton: {
     backgroundColor: "#1a73e8",
     padding: 15,
     borderRadius: 8,
     alignItems: "center",
-    marginTop: 25,
+    marginTop: 24,
   },
   loginButtonText: {
     color: "#fff",
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "bold",
   },
   forgotPassword: {
     color: "#1a73e8",
     textAlign: "center",
-    marginTop: 15,
+    marginTop: 16,
     fontSize: 14,
+    fontWeight: "500",
   },
   footer: {
     flexDirection: "row",
