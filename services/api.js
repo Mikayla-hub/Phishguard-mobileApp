@@ -2,7 +2,7 @@ import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // IMPORTANT: Verify this is still your current IPv4 address!
-const YOUR_LOCAL_IP = "172.20.10.2"; 
+const YOUR_LOCAL_IP = "172.20.10.2";
 
 const API_BASE_URL =
   Platform.OS === "web"

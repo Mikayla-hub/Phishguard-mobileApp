@@ -1,11 +1,24 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
-const mlService = require('../services/mlService');
-const mlClient = require('../services/mlClient');
+const MLPythonBridge = require('../services/mlPythonBridge');
 const db = require('../config/database');
 const Tesseract = require('tesseract.js');
 const { authenticate } = require('../middleware/auth');
+
+// Initialize ML Bridge to Python server
+const mlBridge = new MLPythonBridge('http://localhost:5000');
+let mlBridgeReady = false;
+
+// Check ML server on startup
+mlBridge.healthCheck().then(ready => {
+  mlBridgeReady = ready;
+  if (ready) {
+    console.log('✅ ML Python Bridge initialized and connected');
+  } else {
+    console.warn('⚠️  ML Python server not available yet (will auto-reconnect on requests)');
+  }
+});
 
 /**
  * Strip phone UI chrome and OCR noise from extracted screenshot text.
@@ -18,6 +31,116 @@ function cleanOcrText(raw) {
     .replace(/\b\w{1}\b/g, '')          // strip isolated single-char OCR artefacts
     .replace(/\s{2,}/g, ' ')            // collapse whitespace
     .trim();
+}
+
+/**
+ * Format Python ML server response to unified analysis format
+ */
+function formatAnalysisResponse(mlResponse, contentType) {
+  if (!mlResponse || !mlResponse.analysis) {
+    return null;
+  }
+
+  const analysisData = mlResponse.analysis;
+  const phishingProb = analysisData.phishing_probability || 0.5;
+  const confidence = analysisData.confidence || 0;
+
+  // Map risk level to recommendation
+  const riskLevel = analysisData.risk_level || 'UNCERTAIN';
+  const recommendation = analysisData.recommendation || 'Manual review required';
+
+  // Build indicators from detected features
+  const indicators = [];
+  
+  if (contentType === 'email' && mlResponse.features_detected) {
+    const features = mlResponse.features_detected;
+    
+    if (features.urgency_indicators?.has_urgency) {
+      indicators.push(`⚠️  Urgency language detected (${features.urgency_indicators.urgency_word_count} urgency keywords)`);
+    }
+    if (features.sender_indicators?.is_generic) {
+      indicators.push('⚠️  Generic sender name (e.g., "Admin", "Support")');
+    }
+    if (features.sender_indicators?.suspicious_domain) {
+      indicators.push('🚨 Sender domain is suspicious or use URL shortener');
+    }
+    if (features.url_indicators?.has_ip_url) {
+      indicators.push('🚨 Contains direct IP address URL (common in phishing)');
+    }
+    if (features.url_indicators?.shortened_urls > 0) {
+      indicators.push(`⚠️  Contains ${features.url_indicators.shortened_urls} shortened URL(s)`);
+    }
+    if (features.content_indicators?.requests_personal_info > 0) {
+      indicators.push(`🚨 Requests sensitive information (${features.content_indicators.requests_personal_info} fields)`);
+    }
+    if (features.content_indicators?.has_forms) {
+      indicators.push('🚨 Contains embedded forms to collect data');
+    }
+    if (features.content_indicators?.broken_grammar) {
+      indicators.push('⚠️  Contains broken English or poor grammar');
+    }
+    if (features.content_indicators?.uses_authority_tactic) {
+      indicators.push('⚠️  Impersonates known authority (bank, service provider, etc.)');
+    }
+  } else if (contentType === 'url' && mlResponse.structural_features) {
+    const features = mlResponse.structural_features;
+    
+    if (features.is_ip_address) {
+      indicators.push('🚨 URL is direct IP address (very suspicious)');
+    }
+    if (features.has_at_symbol) {
+      indicators.push('🚨 URL contains @ symbol (can hide real domain)');
+    }
+    if (features.long_url) {
+      indicators.push('⚠️  Unusually long URL');
+    }
+    if (features.deep_subdomain) {
+      indicators.push('⚠️  Multiple subdomains (may hide real domain)');
+    }
+    if (features.uses_http) {
+      indicators.push('⚠️  Uses plain HTTP (not encrypted)');
+    }
+    if (features.new_tld) {
+      indicators.push('⚠️  Uses suspicious TLD (.tk, .ml, .ga, etc.)');
+    }
+    if (features.looks_like_typo) {
+      indicators.push('🚨 Domain looks like common typo (e.g., "amaz0n")');
+    }
+    
+    // Add reputation info
+    if (mlResponse.reputation?.urlhaus_blacklisted) {
+      indicators.push(`🚨 Blacklisted on URLhaus (threat: ${mlResponse.reputation.urlhaus_threat})`);
+    }
+  }
+
+  // Add confidence info
+  if (confidence < 0.2) {
+    indicators.push('⚠️  Low confidence - manual review recommended');
+  }
+
+  if (indicators.length === 0) {
+    indicators.push('No major phishing indicators detected');
+  }
+
+  // Map risk level
+  const mappedRiskLevel = {
+    'CRITICAL': 'critical',
+    'HIGH': 'high',
+    'MEDIUM': 'medium',
+    'LOW': 'low',
+    'UNCERTAIN': 'uncertain'
+  }[riskLevel] || 'low';
+
+  return {
+    riskScore: phishingProb,
+    riskLevel: mappedRiskLevel,
+    confidence,
+    indicators,
+    recommendations: [recommendation],
+    modelVersion: analysisData.model_version || 'ensemble-v2',
+    topRisks: mlResponse.top_risks || [],
+    timestamp: mlResponse.timestamp
+  };
 }
 
 router.post('/analyze', authenticate, async (req, res) => {
@@ -154,61 +277,50 @@ router.post('/analyze', authenticate, async (req, res) => {
       }
     }
 
-    // 2. Dual-model analysis pipeline:
-    //    a) Fast Naive Bayes (Node.js, always available)
-    //    b) High-accuracy Random Forest (Python FastAPI, preferred when available)
-    const nbAnalysis = mlService.analyze(textToAnalyze);
-
-    // Attempt the Python Random Forest model for higher accuracy
-    let rfResult = null;
+    // 2. Intelligent model selection based on content type
+    console.log('🧠 Invoking ML analysis (ensemble models with confidence scoring)...');
+    
+    let analysis = null;
     const isUrl = /^https?:\/\//i.test(textToAnalyze) ||
                   /^(www\.|[a-z0-9-]+\.[a-z]{2,})/i.test(textToAnalyze);
 
-    try {
-      if (isUrl) {
-        rfResult = await mlClient.analyzeUrl(textToAnalyze);
-      } else {
-        rfResult = await mlClient.analyzeEmail({ body: textToAnalyze });
-      }
-    } catch (rfErr) {
-      console.warn('⚠️ Python RF model unavailable, using Naive Bayes only:', rfErr.message);
+    // Ensure ML bridge is connected
+    if (!mlBridgeReady) {
+      const connected = await mlBridge.healthCheck();
+      mlBridgeReady = connected;
     }
 
-    // Weighted ensemble: RF (70%) + NB (30%) when both are available
-    let analysis;
-    if (rfResult && rfResult.phishingProbability !== undefined) {
-      const rfScore  = rfResult.phishingProbability;
-      const nbScore  = nbAnalysis.riskScore;
-      const blended  = (rfScore * 0.70) + (nbScore * 0.30);
-      const rfLevel  = blended >= 0.75 ? 'critical'
-                     : blended >= 0.5  ? 'high'
-                     : blended >= 0.25 ? 'medium'
-                     : blended >= 0.1  ? 'low'
-                     : 'safe';
+    try {
+      if (isUrl) {
+        // URL analysis with reputation checks
+        console.log('🔗 Analyzing as URL...');
+        const urlAnalysis = await mlBridge.analyzeUrl(textToAnalyze);
+        analysis = formatAnalysisResponse(urlAnalysis, 'url');
+      } else {
+        // Email analysis with sender/subject context
+        console.log('📧 Analyzing as email...');
+        const emailAnalysis = await mlBridge.analyzeEmail(
+          textToAnalyze,
+          req.body.sender || '',
+          req.body.subject || ''
+        );
+        analysis = formatAnalysisResponse(emailAnalysis, 'email');
+      }
+
+      if (!analysis) {
+        throw new Error('Invalid analysis response from ML server');
+      }
+
+      console.log(`✅ Analysis complete: ${analysis.riskLevel} (${(analysis.riskScore*100).toFixed(1)}% phishing probability)`);
+    } catch (mlErr) {
+      console.error('❌ ML Analysis Error:', mlErr.message);
       analysis = {
-        riskLevel: rfLevel,
-        riskScore: blended,
-        indicators: [
-          `Ensemble model: ${(blended * 100).toFixed(1)}% phishing probability (RF ${(rfScore*100).toFixed(1)}% × 70% + NB ${(nbScore*100).toFixed(1)}% × 30%).`,
-          ...nbAnalysis.indicators,
-        ],
-        recommendations: blended >= 0.5
-          ? ['High probability of phishing. Do not interact with this content.']
-          : blended >= 0.25
-            ? ['Proceed with caution. Verify through official channels.']
-            : ['Content appears safe, but always remain vigilant.'],
+        riskLevel: 'uncertain',
+        riskScore: 0.5,
+        indicators: ['Analysis service temporarily unavailable. Manual review recommended.'],
+        recommendations: ['Please verify this content through official channels before taking action.'],
+        error: mlErr.message
       };
-      console.log(`🧠 Ensemble: RF=${(rfScore*100).toFixed(1)}% NB=${(nbScore*100).toFixed(1)}% → Blended=${(blended*100).toFixed(1)}%`);
-    } else {
-      // Fallback: use Naive Bayes result only; warn user model is degraded
-      analysis = {
-        ...nbAnalysis,
-        indicators: [
-          '⚠️ Random Forest model offline — result from Naive Bayes only (lower accuracy).',
-          ...nbAnalysis.indicators,
-        ],
-      };
-      console.log(`🧠 Analysis (NB only — RF offline): ${nbAnalysis.riskLevel}`);
     }
 
     // 3. Save the results directly to Firebase Realtime Database

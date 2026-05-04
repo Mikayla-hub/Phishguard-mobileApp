@@ -64,13 +64,24 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
+// Health check endpoint (with ML server status)
+app.get('/api/health', async (req, res) => {
+  const MLPythonBridge = require('./services/mlPythonBridge');
+  const mlBridge = new MLPythonBridge('http://localhost:5000');
+  
+  const mlConnected = await mlBridge.healthCheck().catch(() => false);
+  
   res.json({
-    status: 'healthy',
+    status: mlConnected ? 'healthy' : 'degraded',
     timestamp: new Date().toISOString(),
-    version: '1.0.0',
-    service: 'PhishGuard API'
+    version: '2.0.0',
+    service: 'PhishGuard API (Enhanced ML)',
+    components: {
+      'Node.js Backend': 'operational',
+      'ML Ensemble Server': mlConnected ? 'connected' : 'disconnected',
+      'Firebase Database': db ? 'ready' : 'not initialized'
+    },
+    notes: mlConnected ? 'Full accuracy with ensemble models' : 'ML server offline - will use fallback heuristics'
   });
 });
 
