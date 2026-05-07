@@ -116,6 +116,7 @@ const ReportPhishingScreen = ({ navigation, route }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [reportId, setReportId] = useState("");
+  const [showBenefits, setShowBenefits] = useState(false);
 
   // AI Auto-categorization
   useEffect(() => {
@@ -242,6 +243,53 @@ const ReportPhishingScreen = ({ navigation, route }) => {
         style={styles.content}
       >
         <ScrollView showsVerticalScrollIndicator={false}>
+
+          {/* ── Benefits banner ── */}
+          <TouchableOpacity
+            style={styles.benefitsBanner}
+            onPress={() => setShowBenefits(b => !b)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.benefitsHeader}>
+              <Text style={styles.benefitsHeaderText}>💡 Why report phishing?</Text>
+              <Text style={styles.benefitsChevron}>{showBenefits ? "▲" : "▼"}</Text>
+            </View>
+            {showBenefits && (
+              <View style={styles.benefitsList}>
+                {[
+                  {
+                    icon: "🤖",
+                    title: "Instant AI Analysis",
+                    desc: "PhishGuard's ML engine scores your report for risk level and identifies phishing patterns automatically.",
+                  },
+                  {
+                    icon: "⚠️",
+                    title: "Personalised Incident Plan",
+                    desc: "An AI-generated step-by-step recovery plan is created specifically for your threat type — for individuals and SMEs.",
+                  },
+                  {
+                    icon: "📊",
+                    title: "Exportable PDF Report",
+                    desc: "Every report is logged with timestamps and risk scores. Download or share as a PDF for insurance, HR, or compliance records.",
+                  },
+                  {
+                    icon: "🛡️",
+                    title: "Protect Your Community",
+                    desc: "Your report helps train detection models and warns others about active phishing campaigns targeting Zimbabwean users.",
+                  },
+                ].map((b, i) => (
+                  <View key={i} style={styles.benefitItem}>
+                    <Text style={styles.benefitIcon}>{b.icon}</Text>
+                    <View style={styles.benefitText}>
+                      <Text style={styles.benefitTitle}>{b.title}</Text>
+                      <Text style={styles.benefitDesc}>{b.desc}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </TouchableOpacity>
+
           {/* Report Type Selector */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Report Type</Text>
@@ -431,21 +479,27 @@ const ReportPhishingScreen = ({ navigation, route }) => {
       </KeyboardAvoidingView>
 
       {/* Success Modal */}
-      <Modal visible={showSuccessModal} transparent animationType="fade">
+      <Modal visible={showSuccessModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
+
+            {/* Header */}
             <Text style={styles.modalIcon}>✅</Text>
             <Text style={styles.modalTitle}>Report Submitted!</Text>
+            <Text style={styles.modalSubtitle}>
+              Your report is logged and secured. Take the next steps below to protect yourself.
+            </Text>
+
+            {/* Report ID */}
             <View style={styles.reportIdContainer}>
               <Text style={styles.reportIdLabel}>Report ID</Text>
               <Text style={styles.reportIdValue}>{reportId}</Text>
             </View>
-            <Text style={styles.modalMessage}>
-              Thank you for helping keep our community safe. Our security team will review this report and take appropriate action.
-            </Text>
+
+            {/* AI Category badge */}
             {aiCategory && (
               <View style={styles.modalCategory}>
-                <Text style={styles.modalCategoryLabel}>Categorized as:</Text>
+                <Text style={styles.modalCategoryLabel}>Detected as:</Text>
                 <View style={[styles.modalCategoryBadge, { backgroundColor: aiCategory.color }]}>
                   <Text style={styles.modalCategoryText}>
                     {aiCategory.icon} {aiCategory.name}
@@ -453,20 +507,57 @@ const ReportPhishingScreen = ({ navigation, route }) => {
                 </View>
               </View>
             )}
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.modalButtonPrimary}
-                onPress={() => {
-                  setShowSuccessModal(false);
-                  navigation.goBack();
-                }}
-              >
-                <Text style={styles.modalButtonPrimaryText}>Back to Home</Text>
+
+            {/* Immediate advice */}
+            <View style={styles.adviceBox}>
+              <Text style={styles.adviceTitle}>⚡ Immediate Actions</Text>
+              {[
+                "Do NOT click any links in the suspicious content",
+                "Change passwords if you may have entered credentials",
+                "Notify your bank if financial info was shared",
+              ].map((tip, i) => (
+                <View key={i} style={styles.adviceRow}>
+                  <Text style={styles.adviceDot}>•</Text>
+                  <Text style={styles.adviceText}>{tip}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Next-step buttons */}
+            <Text style={styles.nextStepsLabel}>What would you like to do next?</Text>
+
+            <TouchableOpacity
+              style={styles.nextStepBtnPrimary}
+              onPress={() => {
+                setShowSuccessModal(false);
+                navigation.navigate("IncidentResponseScreen");
+              }}
+            >
+              <Text style={styles.nextStepBtnPrimaryText}>⚠️  View Incident Response Plan</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.nextStepBtnSecondary}
+              onPress={() => {
+                setShowSuccessModal(false);
+                navigation.navigate("PhishingReportsDashboard");
+              }}
+            >
+              <Text style={styles.nextStepBtnSecondaryText}>📊  View in Reports Dashboard</Text>
+            </TouchableOpacity>
+
+            <View style={styles.modalBottomRow}>
+              <TouchableOpacity style={styles.modalBtnGhost} onPress={handleNewReport}>
+                <Text style={styles.modalBtnGhostText}>Submit Another</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalButtonSecondary} onPress={handleNewReport}>
-                <Text style={styles.modalButtonSecondaryText}>Submit Another</Text>
+              <TouchableOpacity
+                style={styles.modalBtnGhost}
+                onPress={() => { setShowSuccessModal(false); navigation.navigate("Homescreen"); }}
+              >
+                <Text style={styles.modalBtnGhostText}>Go Home</Text>
               </TouchableOpacity>
             </View>
+
           </View>
         </View>
       </Modal>
@@ -749,32 +840,66 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     fontSize: 14,
   },
-  modalButtons: {
-    width: "100%",
+  modalButtons:    { width: "100%" },
+  modalButtonPrimary: { backgroundColor: "#1a73e8", padding: 15, borderRadius: 10, alignItems: "center", marginBottom: 10 },
+  modalButtonPrimaryText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
+  modalButtonSecondary: { backgroundColor: "#f0f0f0", padding: 15, borderRadius: 10, alignItems: "center" },
+  modalButtonSecondaryText: { color: "#666", fontWeight: "600", fontSize: 14 },
+
+  // New success modal styles
+  modalSubtitle: { fontSize: 13, color: "#666", textAlign: "center", marginBottom: 14, lineHeight: 19 },
+
+  adviceBox: {
+    backgroundColor: "#fff8e1", borderRadius: 12, padding: 14,
+    width: "100%", marginBottom: 16, borderLeftWidth: 3, borderLeftColor: "#f9ab00",
   },
-  modalButtonPrimary: {
-    backgroundColor: "#1a73e8",
-    padding: 15,
-    borderRadius: 10,
-    alignItems: "center",
-    marginBottom: 10,
+  adviceTitle: { fontSize: 13, fontWeight: "800", color: "#e65100", marginBottom: 8 },
+  adviceRow:   { flexDirection: "row", alignItems: "flex-start", marginBottom: 5 },
+  adviceDot:   { color: "#f9ab00", fontWeight: "800", marginRight: 6, fontSize: 14 },
+  adviceText:  { fontSize: 12, color: "#333", flex: 1, lineHeight: 18 },
+
+  nextStepsLabel: { fontSize: 12, fontWeight: "700", color: "#aaa", letterSpacing: 0.5, marginBottom: 10, width: "100%", textAlign: "center" },
+
+  nextStepBtnPrimary: {
+    backgroundColor: "#d93025", borderRadius: 12, paddingVertical: 13,
+    width: "100%", alignItems: "center", marginBottom: 10,
+    elevation: 3, shadowColor: "#d93025", shadowOpacity: 0.3, shadowOffset: { width: 0, height: 3 },
   },
-  modalButtonPrimaryText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 16,
+  nextStepBtnPrimaryText: { color: "#fff", fontWeight: "800", fontSize: 14 },
+
+  nextStepBtnSecondary: {
+    backgroundColor: "#fff", borderRadius: 12, paddingVertical: 13,
+    width: "100%", alignItems: "center", marginBottom: 14,
+    borderWidth: 2, borderColor: "#1a73e8",
   },
-  modalButtonSecondary: {
-    backgroundColor: "#f0f0f0",
-    padding: 15,
-    borderRadius: 10,
-    alignItems: "center",
+  nextStepBtnSecondaryText: { color: "#1a73e8", fontWeight: "800", fontSize: 14 },
+
+  modalBottomRow: { flexDirection: "row", justifyContent: "space-between", width: "100%" },
+  modalBtnGhost: { flex: 1, alignItems: "center", padding: 10 },
+  modalBtnGhostText: { color: "#999", fontSize: 13, fontWeight: "600" },
+  // Benefits banner
+  benefitsBanner: {
+    backgroundColor: "#fff", borderRadius: 14, marginBottom: 16,
+    borderWidth: 1.5, borderColor: "#e8f0fe", overflow: "hidden",
+    elevation: 1, shadowColor: "#1a73e8", shadowOpacity: 0.08, shadowOffset: { width: 0, height: 2 },
   },
-  modalButtonSecondaryText: {
-    color: "#666",
-    fontWeight: "600",
-    fontSize: 14,
+  benefitsHeader: {
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    paddingHorizontal: 16, paddingVertical: 14,
+    backgroundColor: "#e8f0fe",
   },
+  benefitsHeaderText: { fontSize: 14, fontWeight: "800", color: "#1a73e8" },
+  benefitsChevron:    { fontSize: 12, color: "#1a73e8", fontWeight: "700" },
+  benefitsList:       { padding: 14 },
+  benefitItem: {
+    flexDirection: "row", alignItems: "flex-start",
+    marginBottom: 14, paddingBottom: 14,
+    borderBottomWidth: 1, borderBottomColor: "#f0f0f0",
+  },
+  benefitIcon:  { fontSize: 24, marginRight: 12, marginTop: 2 },
+  benefitText:  { flex: 1 },
+  benefitTitle: { fontSize: 13, fontWeight: "800", color: "#1c1c1e", marginBottom: 3 },
+  benefitDesc:  { fontSize: 12, color: "#666", lineHeight: 18 },
 });
 
 export default ReportPhishingScreen;
