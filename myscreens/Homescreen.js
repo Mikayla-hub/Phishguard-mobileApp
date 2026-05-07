@@ -1,463 +1,232 @@
 import {
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-  ActivityIndicator,
+  ScrollView, StatusBar, StyleSheet, Text,
+  TouchableOpacity, View, ActivityIndicator,
 } from "react-native";
 import React, { useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getLearningModules, generateModule } from "../services/api";
 import { useTheme } from "../contexts/ThemeContext";
 
 const Homescreen = ({ navigation }) => {
-  const [allModules, setAllModules] = useState([]);
-  const [dynamicModules, setDynamicModules] = useState([]);
   const [username, setUsername] = useState("User");
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [selectedLevel, setSelectedLevel] = useState("beginner");
   const { colors, isDarkMode } = useTheme();
 
-  const LEVEL_CONFIG = {
-    beginner: { label: "Beginner", color: "#1a73e8", bg: "#e8f0fe", icon: "🌱" },
-    intermediate: { label: "Intermediate", color: "#f57c00", bg: "#fef3e0", icon: "⚡" },
-    expert: { label: "Expert", color: "#c62828", bg: "#fce4ec", icon: "🔥" },
-  };
-
   useEffect(() => {
-    const fetchModules = async () => {
-      try {
-        const response = await getLearningModules();
-        if (response?.modules?.length > 0) {
-          const validModules = response.modules.filter(m => (m.totalLessons || 0) >= 6);
-          const modulesToUse = validModules.length > 0 ? validModules : response.modules;
-          setAllModules(modulesToUse);
-        }
-      } catch (error) {
-        console.error("Failed to fetch modules:", error);
-      }
-    };
+    AsyncStorage.getItem("username").then(n => { if (n) setUsername(n); });
+  }, []);
 
-    const initializeModules = async () => {
-      try {
-        const storedName = await AsyncStorage.getItem("username");
-        if (storedName) setUsername(storedName);
-        await fetchModules();
-      } catch (error) {
-        console.error("Failed to initialise modules:", error);
-      }
-    };
+  const hour = new Date().getHours();
+  const greeting =
+    hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
-    initializeModules();
-    const unsubscribe = navigation.addListener('focus', fetchModules);
-    return unsubscribe;
-  }, [navigation]);
+  // ── feature cards config ────────────────────────────────────────────────
 
-  // Filter modules whenever selectedLevel or allModules changes
-  useEffect(() => {
-    const filtered = allModules.filter(m =>
-      (m.difficulty || 'beginner').toLowerCase() === selectedLevel
-    );
-    setDynamicModules(filtered);
-  }, [selectedLevel, allModules]);
+  const CARDS = [
+    {
+      id: "analyze",
+      icon: "🔍",
+      title: "AI Analyzer",
+      subtitle: "Scan URLs, emails & screenshots",
+      color: "#1a73e8",
+      bg: "#e8f0fe",
+      screen: "PhishingAnalyzerScreen",
+    },
+    {
+      id: "report",
+      icon: "🚨",
+      title: "Report Phishing",
+      subtitle: "Submit a threat you found",
+      color: "#d93025",
+      bg: "#fce8e6",
+      screen: "ReportPhishingScreen",
+    },
+    {
+      id: "incidents",
+      icon: "⚠️",
+      title: "Incident Response",
+      subtitle: "Step-by-step recovery plans",
+      color: "#f9ab00",
+      bg: "#fef7e0",
+      screen: "IncidentResponseScreen",
+    },
+    {
+      id: "reports",
+      icon: "📊",
+      title: "Reports & PDF",
+      subtitle: "View history · export & share",
+      color: "#1a73e8",
+      bg: "#e8f0fe",
+      screen: "PhishingReportsDashboard",
+    },
+    {
+      id: "learning",
+      icon: "🎓",
+      title: "Learning Hub",
+      subtitle: "Interactive phishing awareness lessons",
+      color: "#34a853",
+      bg: "#e6f4ea",
+      screen: "LearningHubScreen",
+    },
+    {
+      id: "settings",
+      icon: "⚙️",
+      title: "Settings",
+      subtitle: "Preferences, theme & account",
+      color: "#666",
+      bg: "#f5f5f5",
+      screen: "SettingsScreen",
+    },
+  ];
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={colors.primary} />
+    <View style={[s.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle="light-content" backgroundColor="#1a73e8" />
 
-      {/* Header Section */}
-      <View style={[styles.header, { backgroundColor: colors.primary }]}>
+      {/* ── Header ── */}
+      <View style={s.header}>
         <View>
-          <Text style={styles.greetingText}>Welcome back,</Text>
-          <Text style={styles.usernameText}>{username}</Text>
+          <Text style={s.greeting}>{greeting},</Text>
+          <Text style={s.username}>{username} 👋</Text>
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <TouchableOpacity
-            onPress={() => navigation.navigate("SettingsScreen")}
-            style={[styles.logoutButton, { marginRight: 10 }]}
-          >
-            <Text style={styles.logoutText}>⚙️</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => navigation.navigate("LoginScreen")}
-            style={styles.logoutButton}
-          >
-            <Text style={styles.logoutText}>Logout</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          onPress={() => navigation.navigate("LoginScreen")}
+          style={s.logoutBtn}
+        >
+          <Text style={s.logoutText}>Logout</Text>
+        </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Real-time Protection Status */}
-        <TouchableOpacity 
-          style={styles.statusCard}
+      <ScrollView
+        contentContainerStyle={s.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Status pill ── */}
+        <TouchableOpacity
+          style={s.statusPill}
           onPress={() => navigation.navigate("PhishingAnalyzerScreen")}
         >
-          <Text style={styles.statusTitle}>System Status</Text>
-          <View style={styles.statusRow}>
-            <View style={styles.activeDot} />
-            <Text style={styles.statusText}>AI Protection Active</Text>
-          </View>
-          <Text style={styles.statusSubtext}>Tap to analyze suspicious content →</Text>
+          <View style={s.statusDot} />
+          <Text style={s.statusText}>AI Protection Active</Text>
+          <Text style={s.statusArrow}>Tap to analyze →</Text>
         </TouchableOpacity>
 
-        {/* Quick Actions Section */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
-        <View style={styles.quickActionsRow}>
-          {/* Analyze Button */}
-          <TouchableOpacity
-            style={styles.analyzeButton}
-            onPress={() => navigation.navigate("PhishingAnalyzerScreen")}
-          >
-            <Text style={styles.actionIcon}>🔍</Text>
-            <Text style={styles.analyzeButtonTitle}>ANALYZE</Text>
-            <Text style={styles.analyzeButtonSubtitle}>Scan URLs & Emails</Text>
-          </TouchableOpacity>
-
-          {/* Report Button */}
-          <TouchableOpacity
-            style={styles.reportButton}
-            onPress={() => navigation.navigate("ReportPhishingScreen")}
-          >
-            <Text style={styles.actionIcon}>🚨</Text>
-            <Text style={styles.reportButtonTitle}>REPORT</Text>
-            <Text style={styles.reportButtonSubtitle}>Submit Threats</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Incident Response Card */}
-        <TouchableOpacity
-          style={styles.incidentCard}
-          onPress={() => navigation.navigate("IncidentResponseScreen")}
-        >
-          <View style={styles.incidentContent}>
-            <Text style={styles.incidentIcon}>⚠️</Text>
-            <View style={styles.incidentInfo}>
-              <Text style={styles.incidentTitle}>Incident Response Plan</Text>
-              <Text style={styles.incidentSubtitle}>Step-by-step guide when phishing is detected</Text>
-            </View>
-            <Text style={styles.moduleArrow}>›</Text>
-          </View>
-        </TouchableOpacity>
-
-        {/* Learning Hub Section */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Learning Hub</Text>
-        <Text style={[styles.sectionSubtitle, { color: colors.subtext }]}>
-          Interactive lessons across 3 difficulty levels
-        </Text>
-
-        {/* Difficulty Filter Tabs */}
-        <View style={styles.levelTabs}>
-          {Object.entries(LEVEL_CONFIG).map(([level, config]) => (
+        {/* ── Quick action row (Analyze + Report) ── */}
+        <View style={s.quickRow}>
+          {CARDS.slice(0, 2).map(card => (
             <TouchableOpacity
-              key={level}
-              style={[
-                styles.levelTab,
-                selectedLevel === level && { backgroundColor: config.color, borderColor: config.color },
-              ]}
-              onPress={() => setSelectedLevel(level)}
+              key={card.id}
+              style={[s.quickCard, { backgroundColor: card.color }]}
+              onPress={() => navigation.navigate(card.screen)}
+              activeOpacity={0.85}
             >
-              <Text style={[
-                styles.levelTabText,
-                selectedLevel === level && { color: "#fff" },
-              ]}>
-                {config.icon} {config.label}
-              </Text>
+              <Text style={s.quickIcon}>{card.icon}</Text>
+              <Text style={s.quickTitle}>{card.title.toUpperCase()}</Text>
+              <Text style={s.quickSub}>{card.subtitle}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Module Cards */}
-        <View style={styles.modulesContainer}>
-          {dynamicModules.length > 0 ? (
-            dynamicModules.map((mod) => {
-              const levelCfg = LEVEL_CONFIG[(mod.difficulty || 'beginner').toLowerCase()] || LEVEL_CONFIG.beginner;
-              return (
-                <TouchableOpacity 
-                  key={mod.id}
-                  style={styles.moduleCard}
-                  onPress={() => navigation.navigate("LearningModuleScreen", { moduleId: mod.id })}
-                >
-                  <View style={[styles.iconBox, { backgroundColor: levelCfg.bg }]}>
-                     <Text style={styles.iconText}>{levelCfg.icon}</Text>
-                  </View>
-                  <View style={styles.moduleInfo}>
-                    <Text style={styles.moduleTitle}>{mod.title}</Text>
-                    <Text style={styles.moduleDuration}>{mod.duration || "15 min"}</Text>
-                  </View>
-                  <View style={[styles.levelBadge, { backgroundColor: levelCfg.color }]}>
-                    <Text style={styles.levelBadgeText}>{levelCfg.label}</Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })
-          ) : (
-            <View style={{ padding: 20, alignItems: "center" }}>
-              <Text style={{ color: "#666" }}>No {LEVEL_CONFIG[selectedLevel].label.toLowerCase()} modules generated yet.</Text>
-              <Text style={{ color: "#999", fontSize: 12, marginTop: 5 }}>Run the generator script to create all modules.</Text>
-            </View>
-          )}
+        {/* ── Feature grid ── */}
+        <Text style={[s.sectionTitle, { color: colors.text }]}>Features</Text>
+        <View style={s.grid}>
+          {CARDS.slice(2).map(card => (
+            <TouchableOpacity
+              key={card.id}
+              style={[s.gridCard, { backgroundColor: isDarkMode ? colors.card : "#fff" }]}
+              onPress={() => navigation.navigate(card.screen)}
+              activeOpacity={0.85}
+            >
+              <View style={[s.gridIconBox, { backgroundColor: card.bg }]}>
+                <Text style={s.gridIcon}>{card.icon}</Text>
+              </View>
+              <Text style={[s.gridTitle, { color: colors.text }]}>{card.title}</Text>
+              <Text style={s.gridSub} numberOfLines={2}>{card.subtitle}</Text>
+              <View style={[s.gridAccent, { backgroundColor: card.color }]} />
+            </TouchableOpacity>
+          ))}
         </View>
+
+        {/* ── Security tip ── */}
+        <View style={s.tipCard}>
+          <Text style={s.tipTitle}>🛡️ Today's Security Tip</Text>
+          <Text style={s.tipBody}>
+            Always hover over links before clicking. Phishing URLs often mimic
+            legitimate domains with subtle misspellings like{" "}
+            <Text style={{ fontWeight: "800", color: "#d93025" }}>paypa1.com</Text>{" "}
+            instead of paypal.com.
+          </Text>
+        </View>
+
+        <View style={{ height: 30 }} />
       </ScrollView>
     </View>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f5f7fa",
-  },
+// ─── styles ─────────────────────────────────────────────────────────────────
+
+const s = StyleSheet.create({
+  container:   { flex: 1 },
+
   header: {
     backgroundColor: "#1a73e8",
-    paddingTop: 50,
-    paddingBottom: 25,
-    paddingHorizontal: 20,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    paddingTop: 52, paddingBottom: 24, paddingHorizontal: 20,
+    borderBottomLeftRadius: 24, borderBottomRightRadius: 24,
+    flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end",
+    elevation: 6, shadowColor: "#1a73e8", shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 4 }, shadowRadius: 10,
   },
-  greetingText: {
-    color: "#daeaff",
-    fontSize: 14,
+  greeting:    { color: "rgba(255,255,255,0.8)", fontSize: 14 },
+  username:    { color: "#fff", fontSize: 24, fontWeight: "800" },
+  logoutBtn: {
+    backgroundColor: "rgba(255,255,255,0.2)", paddingVertical: 7,
+    paddingHorizontal: 14, borderRadius: 16,
   },
-  usernameText: {
-    color: "#ffffff",
-    fontSize: 22,
-    fontWeight: "bold",
+  logoutText:  { color: "#fff", fontSize: 13, fontWeight: "700" },
+
+  scroll:      { paddingTop: 18, paddingHorizontal: 18, paddingBottom: 10 },
+
+  statusPill: {
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: "#fff", borderRadius: 20, paddingVertical: 10,
+    paddingHorizontal: 16, marginBottom: 18,
+    elevation: 2, shadowColor: "#000", shadowOpacity: 0.06, shadowOffset: { width: 0, height: 2 },
   },
-  logoutButton: {
-    backgroundColor: "rgba(255,255,255,0.2)",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 15,
+  statusDot:   { width: 10, height: 10, borderRadius: 5, backgroundColor: "#34a853", marginRight: 10 },
+  statusText:  { fontSize: 14, fontWeight: "700", color: "#333", flex: 1 },
+  statusArrow: { fontSize: 12, color: "#1a73e8", fontWeight: "600" },
+
+  quickRow:    { flexDirection: "row", gap: 12, marginBottom: 24 },
+  quickCard: {
+    flex: 1, borderRadius: 16, padding: 18, alignItems: "center",
+    elevation: 4, shadowOpacity: 0.2, shadowOffset: { width: 0, height: 3 }, shadowRadius: 6,
   },
-  logoutText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
+  quickIcon:   { fontSize: 32, marginBottom: 6 },
+  quickTitle:  { color: "#fff", fontSize: 14, fontWeight: "800", letterSpacing: 0.5 },
+  quickSub:    { color: "rgba(255,255,255,0.8)", fontSize: 11, marginTop: 3, textAlign: "center" },
+
+  sectionTitle:{ fontSize: 18, fontWeight: "800", marginBottom: 12 },
+
+  grid: {
+    flexDirection: "row", flexWrap: "wrap",
+    gap: 12, marginBottom: 22,
   },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
+  gridCard: {
+    width: "47%", borderRadius: 16, padding: 16,
+    elevation: 2, shadowColor: "#000", shadowOpacity: 0.06, shadowOffset: { width: 0, height: 2 },
+    overflow: "hidden",
   },
-  statusCard: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 20,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 2 },
-    borderLeftWidth: 4,
-    borderLeftColor: "#34a853",
+  gridIconBox: { width: 48, height: 48, borderRadius: 12, justifyContent: "center", alignItems: "center", marginBottom: 10 },
+  gridIcon:    { fontSize: 24 },
+  gridTitle:   { fontSize: 14, fontWeight: "800", marginBottom: 4 },
+  gridSub:     { fontSize: 11, color: "#888", lineHeight: 16 },
+  gridAccent:  { position: "absolute", bottom: 0, left: 0, right: 0, height: 3, borderBottomLeftRadius: 16, borderBottomRightRadius: 16 },
+
+  tipCard: {
+    backgroundColor: "#fff3e0", borderRadius: 16, padding: 16,
+    borderLeftWidth: 4, borderLeftColor: "#f9ab00",
   },
-  statusTitle: {
-    fontSize: 12,
-    color: "#888",
-    textTransform: "uppercase",
-    fontWeight: "bold",
-    marginBottom: 8,
-  },
-  statusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-  activeDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#34a853",
-    marginRight: 8,
-  },
-  statusText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#333",
-  },
-  statusSubtext: {
-    fontSize: 13,
-    color: "#1a73e8",
-    marginLeft: 18,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: 5,
-    marginTop: 10,
-  },
-  sectionSubtitle: {
-    fontSize: 13,
-    color: "#666",
-    marginBottom: 15,
-  },
-  quickActionsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 15,
-    marginTop: 10,
-  },
-  analyzeButton: {
-    flex: 1,
-    backgroundColor: "#1a73e8",
-    borderRadius: 12,
-    padding: 18,
-    alignItems: "center",
-    marginRight: 8,
-    elevation: 3,
-    shadowColor: "#1a73e8",
-    shadowOpacity: 0.3,
-    shadowOffset: { width: 0, height: 3 },
-  },
-  reportButton: {
-    flex: 1,
-    backgroundColor: "#d93025",
-    borderRadius: 12,
-    padding: 18,
-    alignItems: "center",
-    marginLeft: 8,
-    elevation: 3,
-    shadowColor: "#d93025",
-    shadowOpacity: 0.3,
-    shadowOffset: { width: 0, height: 3 },
-  },
-  actionIcon: {
-    fontSize: 28,
-    marginBottom: 5,
-  },
-  analyzeButtonTitle: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-    letterSpacing: 0.5,
-  },
-  analyzeButtonSubtitle: {
-    color: "rgba(255,255,255,0.8)",
-    fontSize: 11,
-    marginTop: 3,
-  },
-  reportButtonTitle: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-    letterSpacing: 0.5,
-  },
-  reportButtonSubtitle: {
-    color: "rgba(255,255,255,0.8)",
-    fontSize: 11,
-    marginTop: 3,
-  },
-  incidentCard: {
-    backgroundColor: "#fff3cd",
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 20,
-    borderLeftWidth: 4,
-    borderLeftColor: "#f9ab00",
-    elevation: 2,
-  },
-  incidentContent: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  incidentIcon: {
-    fontSize: 30,
-    marginRight: 12,
-  },
-  incidentInfo: {
-    flex: 1,
-  },
-  incidentTitle: {
-    fontSize: 15,
-    fontWeight: "bold",
-    color: "#333",
-  },
-  incidentSubtitle: {
-    fontSize: 12,
-    color: "#666",
-    marginTop: 2,
-  },
-  modulesContainer: {
-    marginBottom: 20,
-  },
-  moduleCard: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    elevation: 1,
-    shadowColor: "#000",
-    shadowOpacity: 0.03,
-    shadowOffset: { width: 0, height: 1 },
-  },
-  iconBox: {
-    width: 50,
-    height: 50,
-    borderRadius: 10,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 15,
-  },
-  iconText: {
-    fontSize: 24,
-  },
-  moduleInfo: {
-    flex: 1,
-  },
-  moduleTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: 4,
-  },
-  moduleDuration: {
-    fontSize: 12,
-    color: "#888",
-  },
-  moduleArrow: {
-    fontSize: 24,
-    color: "#ccc",
-    fontWeight: "300",
-  },
-  levelTabs: {
-    flexDirection: "row",
-    marginBottom: 15,
-  },
-  levelTab: {
-    flex: 1,
-    paddingVertical: 10,
-    marginHorizontal: 4,
-    borderRadius: 10,
-    backgroundColor: "#fff",
-    borderWidth: 2,
-    borderColor: "#e0e0e0",
-    alignItems: "center",
-  },
-  levelTabText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#666",
-  },
-  levelBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  levelBadgeText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "bold",
-    textTransform: "uppercase",
-  },
+  tipTitle:    { fontSize: 14, fontWeight: "800", color: "#e65100", marginBottom: 6 },
+  tipBody:     { fontSize: 13, color: "#333", lineHeight: 20 },
 });
 
 export default Homescreen;

@@ -236,16 +236,17 @@ router.get('/procedures/:procedureId', authenticate, async (req, res) => {
 router.post('/', authenticate, [
   body('title').notEmpty().withMessage('Title is required'),
   body('incidentType').notEmpty().withMessage('Incident type is required'),
-  body('severity').isIn(['low', 'medium', 'high', 'critical']).withMessage('Invalid severity'),
+  body('severity').optional().isIn(['low', 'medium', 'high', 'critical']).withMessage('Severity must be low, medium, high or critical'),
   body('description').optional().isString()
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      const errorMsg = errors.array().map(e => e.msg).join(', ');
+      return res.status(400).json({ error: errorMsg });
     }
 
-    const { title, incidentType, severity, description, affectedSystems } = req.body;
+    const { title, incidentType, severity = 'medium', description, affectedSystems } = req.body;
     const database = db.getDb();
 
     // Extract risk score from incidentType string (e.g. "Phishing Email Detection (85% Risk)")
@@ -270,6 +271,7 @@ router.post('/', authenticate, [
     // Save the unique procedure tied to this incident
     await database.ref(`procedures/${procedureId}`).set({
       ...procedure,
+      severity: procedure.severity || severity || 'medium', // ensure always present
       generatedAt: new Date().toISOString(),
       incidentId,
     });

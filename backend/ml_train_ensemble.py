@@ -120,7 +120,9 @@ def load_url_dataset():
                 label = (row.get("label") or "").strip()
                 if url and label in ("0", "1"):
                     urls.append(url)
-                    labels.append(int(label))
+                    # IMPORTANT: CSV has 0=phishing, 1=legitimate but our model expects 0=legitimate, 1=phishing
+                    # So we need to invert: 0->1 (phishing), 1->0 (legitimate)
+                    labels.append(1 if label == "0" else 0)
         print(f"   ✅ {len(urls)} samples loaded")
 
     return urls, labels

@@ -29,7 +29,7 @@ router.post('/', authenticate, [
       return res.status(400).json({ error: `Validation failed: ${errorMsg}` });
     }
 
-    const { reportType, content, url, senderEmail, subject } = req.body;
+    const { reportType, content, url, senderEmail, subject, aiCategoryId, severity } = req.body;
     const database = db.getDb();
 
     // Automatically analyze the report content
@@ -58,6 +58,8 @@ router.post('/', authenticate, [
       subject: subject || null,
       riskScore: analysis.riskScore || 0,
       riskLevel: analysis.riskLevel || 'safe',
+      severity: severity || analysis.riskLevel || 'low',
+      aiCategoryId: aiCategoryId || null,
       aiAnalysis: analysis,
       indicators: analysis.indicators || [],
       status: 'pending',

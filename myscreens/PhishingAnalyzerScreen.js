@@ -360,9 +360,10 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
               <View style={styles.actionButtons}>
                 <TouchableOpacity
                   style={styles.reportButton}
-                  onPress={() => navigation.navigate("ReportPhishingScreen", { 
+                  onPress={() => navigation.navigate("ReportPhishingScreen", {
                     prefilledContent: inputText,
-                    analysisResults: results 
+                    analysisResults:  results,
+                    reportType: analysisType === "image" ? "other" : analysisType,
                   })}
                 >
                   <Text style={styles.reportButtonText}>🚨 Report This</Text>

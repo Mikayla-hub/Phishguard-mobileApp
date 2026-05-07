@@ -191,7 +191,7 @@ router.post('/analyze', authenticate, async (req, res) => {
               ocrBody,
               { timeout: 30000 }
             );
-            const extracted = response.data.candidates[0].content.parts[0].text.trim();
+            const extracted = response.data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
             if (extracted) {
               textToAnalyze = extracted;
               extractedSuccessfully = true;
@@ -265,9 +265,30 @@ router.post('/analyze', authenticate, async (req, res) => {
 
       // ATTEMPT 5: Tesseract.js local fallback (~70% accuracy on complex screenshots)
       if (!extractedSuccessfully) {
-        console.log('⚙️ Running local Tesseract.js OCR (last resort)...');
-        const { data: { text } } = await Tesseract.recognize(base64Data, 'eng');
-        textToAnalyze = cleanOcrText(text);   // clean before analysis
+        let worker = null;
+        try {
+          console.log('⚙️ Running local Tesseract.js OCR (last resort)...');
+          // Create worker properly with error handling
+          worker = await Tesseract.createWorker();
+          
+          // Use Buffer or data URL - Tesseract prefers data URLs
+          const { data: { text } } = await worker.recognize(base64Data);
+          textToAnalyze = cleanOcrText(text);   // clean before analysis
+          console.log('✅ Tesseract OCR success!');
+          extractedSuccessfully = true;
+        } catch (tesseractErr) {
+          console.error(`⚠️ Tesseract OCR failed: ${tesseractErr.message}`);
+          textToAnalyze = ''; // Set to empty so we return proper error below
+        } finally {
+          // Always terminate worker to prevent process hang
+          if (worker) {
+            try {
+              await worker.terminate();
+            } catch (e) {
+              console.warn('⚠️ Worker termination warning:', e.message);
+            }
+          }
+        }
       }
       
       console.log(`📝 Extracted Text Preview: ${textToAnalyze.substring(0, 100).replace(/\n/g, ' ')}...`);

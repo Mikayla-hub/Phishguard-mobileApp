@@ -13,7 +13,7 @@ class MLPythonBridge {
     this.timeout = timeout;
     this.isConnected = false;
     this.requestCache = new Map();
-    this.cacheExpiry = 3600000; // 1 hour
+    this.cacheExpiry = 0; // Disabled cache entirely for debugging
   }
 
   /**

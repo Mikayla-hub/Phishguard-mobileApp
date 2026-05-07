@@ -90,12 +90,26 @@ const SEVERITY_LEVELS = [
 ];
 
 const ReportPhishingScreen = ({ navigation, route }) => {
-  const { prefilledContent, analysisResults } = route.params || {};
+  const { prefilledContent, analysisResults, reportType: passedType } = route.params || {};
 
-  const [reportType, setReportType] = useState("email");
-  const [suspiciousContent, setSuspiciousContent] = useState(prefilledContent || "");
+  // Infer type from content if not explicitly passed
+  const inferredType = (() => {
+    if (passedType) return passedType;  // honour what was passed
+    if (!prefilledContent) return "email";
+    const t = prefilledContent.trim();
+    if (/^https?:\///i.test(t) || /^www\./i.test(t) || /\.[a-z]{2,6}(\/.*)?\.?$/i.test(t)) return "url";
+    if (/^\+?[0-9\s\-()]{7,}$/.test(t)) return "sms";
+    return "email";
+  })();
+
+  const [reportType, setReportType] = useState(inferredType);
+  const [suspiciousContent, setSuspiciousContent] = useState(
+    inferredType === "url" ? "" : (prefilledContent || "")
+  );
   const [senderInfo, setSenderInfo] = useState("");
-  const [urlLink, setUrlLink] = useState("");
+  const [urlLink, setUrlLink] = useState(
+    inferredType === "url" ? (prefilledContent || "") : ""
+  );
   const [additionalNotes, setAdditionalNotes] = useState("");
   const [selectedSeverity, setSelectedSeverity] = useState(null);
   const [aiCategory, setAiCategory] = useState(null);

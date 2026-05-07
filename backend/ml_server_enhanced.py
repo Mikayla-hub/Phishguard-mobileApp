@@ -386,31 +386,34 @@ def batch_analyze():
 
 
 def identify_top_risks(features):
-    """Identify top phishing risk indicators from features"""
+    """Identify top phishing risk indicators from features - only show legitimate red flags"""
     risks = []
     
-    if features.get('has_shortened_url'):
-        risks.append({'severity': 'HIGH', 'indicator': 'Shortened URLs detected', 'description': 'Shortened URLs hide the actual destination'})
-    
+    # Critical red flags
     if features.get('has_ip_url'):
-        risks.append({'severity': 'CRITICAL', 'indicator': 'IP-based URLs', 'description': 'Direct IP URLs are common in phishing attacks'})
+        risks.append({'severity': 'CRITICAL', 'indicator': 'IP-based URLs', 'description': 'Email contains direct IP address URLs instead of domain names'})
     
-    if features.get('sender_is_generic'):
-        risks.append({'severity': 'MEDIUM', 'indicator': 'Generic sender', 'description': 'Sender is using a generic name like "admin" or "support"'})
+    if features.get('requests_personal_info', 0) > 2:  # Only flag if multiple personal info requests
+        risks.append({'severity': 'HIGH', 'indicator': 'Multiple credential requests', 'description': 'Email asks for multiple sensitive details (passwords, pins, credit cards)'})
     
-    if features.get('requests_personal_info', 0) > 0:
-        risks.append({'severity': 'HIGH', 'indicator': 'Requests sensitive information', 'description': f'Email asks for {features["requests_personal_info"]} sensitive details'})
-    
-    if features.get('uses_authority_tactic'):
-        risks.append({'severity': 'MEDIUM', 'indicator': 'Authority impersonation', 'description': 'Email impersonates known company/service'})
-    
-    if features.get('uses_urgency_tactic'):
-        risks.append({'severity': 'MEDIUM', 'indicator': 'Urgency pressure', 'description': 'Email uses urgency/fear tactics to pressure action'})
+    # Medium red flags
+    if features.get('has_shortened_url'):
+        risks.append({'severity': 'MEDIUM', 'indicator': 'Shortened URLs used', 'description': 'Email uses URL shorteners which can hide the destination'})
     
     if features.get('has_form'):
-        risks.append({'severity': 'HIGH', 'indicator': 'Embedded forms', 'description': 'Email contains embedded forms to collect data'})
+        risks.append({'severity': 'MEDIUM', 'indicator': 'Embedded login form', 'description': 'Email contains embedded form to collect credentials'})
     
-    return risks[:3]  # Return top 3
+    if features.get('uses_authority_tactic'):
+        risks.append({'severity': 'MEDIUM', 'indicator': 'Authority impersonation detected', 'description': 'Email impersonates a known company but sender domain does not match'})
+    
+    # Low flags (informational)
+    if features.get('sender_is_generic') and features.get('requests_personal_info', 0) > 0:
+        risks.append({'severity': 'LOW', 'indicator': 'Generic sender + credential request', 'description': 'Combination of generic sender and request for sensitive data'})
+    
+    if features.get('uses_urgency_tactic'):
+        risks.append({'severity': 'LOW', 'indicator': 'Pressure/urgency language', 'description': 'Email uses multiple urgency tactics to pressure immediate action'})
+    
+    return risks[:3]  # Return top 3 most relevant risks
 
 
 @app.errorhandler(404)

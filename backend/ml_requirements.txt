@@ -4,22 +4,15 @@ joblib>=1.3.0
 numpy>=1.24.0
 pandas>=2.0.0
 
-# Web Framework (Flask - replacing FastAPI for simplicity)
+# Web Framework (Flask)
 Flask>=3.0.0
 Flask-CORS>=4.0.0
 
 # Advanced Ensemble Methods
 xgboost>=2.0.0
-lightgbm>=4.0.0
-
-# Feature Extraction & NLP
-natural>=0.2.1
-nltk>=3.8.1
 
 # URL & Reputation Analysis
 requests>=2.31.0
-python-whois>=0.9.4
-dnspython>=2.4.0
 
 # Utilities
 python-dotenv>=1.0.0

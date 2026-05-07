@@ -9,14 +9,40 @@ from datetime import datetime
 import requests
 from functools import lru_cache
 
+
+def enrich_url(url):
+    """Append structural signal tokens to URL for TF-IDF feature extraction"""
+    tokens = [url]
+    try:
+        p = urlparse(url if '://' in url else 'http://' + url)
+        host = p.hostname or ''
+        if re.match(r'^\d+\.\d+\.\d+\.\d+$', host):
+            tokens.append('__FEAT_IP_ADDR__')
+        if host.count('.') > 3:
+            tokens.append('__FEAT_DEEP_SUBDOMAIN__')
+        if '@' in url:
+            tokens.append('__FEAT_AT_SYMBOL__')
+        if len(url) > 100:
+            tokens.append('__FEAT_LONG_URL__')
+        if host.count('-') > 2:
+            tokens.append('__FEAT_MANY_HYPHENS__')
+        if len(re.findall(r'[=&]', url)) > 5:
+            tokens.append('__FEAT_MANY_PARAMS__')
+        if p.scheme == 'http' and any(k in url.lower() for k in ['login','account','verify','secure']):
+            tokens.append('__FEAT_HTTP_SENSITIVE__')
+    except Exception:
+        pass
+    return ' '.join(tokens)
+
+
 class EmailFeatureExtractor:
     """Extract phishing indicators from email text, sender, subject"""
     
+    # Actual urgency/pressure keywords (not just dates)
     URGENCY_KEYWORDS = [
-        'urgent', 'immediate', 'act now', 'verify', 'confirm', 'update',
-        'click', 'validate', 'required', 'expired', 'locked', 'suspended',
-        'compromised', 'warning', 'alert', 'action required', 'respond now',
-        'limited time', 'confirm identity', 'unusual activity'
+        'urgent', 'immediate', 'act now', 'verify account', 'confirm identity',
+        'click here', 'validate', 'expired', 'locked', 'suspended',
+        'compromised', 'unusual activity', 'respond now', 'limited time'
     ]
     
     GENERIC_SENDERS = [
@@ -28,6 +54,12 @@ class EmailFeatureExtractor:
         'bit.ly', 'tinyurl.com', 'ow.ly', 'short.link', 'goo.gl',
         'rebrand.ly', 'pastebin', 'github.io', 'glitch.me',
         'herokuapp.com', 'ngrok.io'
+    ]
+    
+    # Real financial/sensitive brands (actual targets of phishing)
+    SENSITIVE_BRANDS = [
+        'bank', 'paypal', 'amazon', 'apple', 'microsoft', 'dropbox',
+        'stripe', 'twilio', 'github', 'coinbase', 'blockchain'
     ]
     
     @staticmethod
@@ -111,13 +143,34 @@ class EmailFeatureExtractor:
                                                 if kw in text_lower)
         
         # ===== PHISHING TACTICS =====
-        features['uses_urgency_tactic'] = urgency_count > 1
-        features['uses_authority_tactic'] = bool(re.search(
-            r'\b(bank|paypal|amazon|apple|microsoft|google|linkedin|ebay)\b', text_lower
+        features['uses_urgency_tactic'] = urgency_count > 2  # Require multiple urgency indicators
+        
+        # Authority impersonation: Only flag if sender domain doesn't match the brand mentioned
+        # AND it's asking for credentials (real phishing tactic)
+        mentioned_brand = None
+        for brand in EmailFeatureExtractor.SENSITIVE_BRANDS:
+            if brand in text_lower:
+                mentioned_brand = brand
+                break
+        
+        # Only flag as impersonation if:
+        # 1. Sender doesn't match the brand domain, AND
+        # 2. Email asks for credentials
+        asks_for_credentials = bool(re.search(
+            r'(verify|confirm|validate|enter).{0,30}(password|pin|credit card|account|identity)', text_lower
         ))
-        features['uses_social_engineering'] = bool(re.search(
-            r'(verify|confirm|validate|update).{0,20}(account|identity|information)', text_lower
-        ))
+        
+        if mentioned_brand and asks_for_credentials:
+            # Check if sender domain contains the brand
+            brand_match = mentioned_brand in sender_domain
+            features['uses_authority_tactic'] = not brand_match  # Only flag if mismatch
+        else:
+            features['uses_authority_tactic'] = False  # Don't flag legitimate corporate emails
+        
+        # Social engineering is only when asking for data PLUS urgency
+        features['uses_social_engineering'] = (
+            asks_for_credentials and urgency_count > 0
+        )
         
         # ===== COMPLEXITY FEATURES =====
         features['email_length'] = len(email_text)
@@ -196,10 +249,8 @@ class URLFeatureExtractor:
             ('.tk', '.ml', '.ga', '.cf', '.gq', '.top', '.xyz', '.club')
         )
         
-        # Typosquatting patterns
-        features['looks_like_typo'] = bool(re.search(
-            r'(amaz0n|paypa1|g00gle|micros0ft|faceb00k)', hostname.lower()
-        ))
+        # Enhanced typosquatting detection
+        features['looks_like_typo'] = URLFeatureExtractor._detect_typosquatting(hostname)
         
         # ===== COMBINED FEATURES =====
         features['overall_suspicion_score'] = (
@@ -212,6 +263,57 @@ class URLFeatureExtractor:
             int(features.get('new_tld', False)) * 1 +
             int(features.get('looks_like_typo', False)) * 3
         )
+        
+        return features
+    
+    @staticmethod
+    def _detect_typosquatting(hostname):
+        """Detect typosquatting and common brand impersonation patterns"""
+        hostname_lower = hostname.lower().split('.')[0]  # Get just the domain name
+        
+        # Exact patterns (numeric substitution)
+        exact_typos = [
+            'amaz0n', 'paypa1', 'g00gle', 'micros0ft', 'faceb00k', 'instag ram',
+            'app1e', 'linkedln', 'twitch', 'redd1t'
+        ]
+        if any(typo in hostname_lower for typo in exact_typos):
+            return True
+        
+        # Known brands to check
+        brands = {
+            'paypal': ['paypa', 'paypa1', 'paypai', 'paypa-l', 'pay-pal', 'paypall'],
+            'amazon': ['amaz0n', 'amazo', 'amzon', 'amazon-', 'amazn'],
+            'google': ['g00gle', 'gogle', 'googlе', 'googl'],
+            'apple': ['app1e', 'appl', 'appel'],
+            'microsoft': ['micros0ft', 'microso', 'microsft'],
+            'facebook': ['faceb00k', 'facebookk', 'facbk'],
+            'instagram': ['instag ram', 'instagra', 'insta-gram'],
+            'linkedin': ['linkedln', 'linkdin', 'linkedin-'],
+            'twitter': ['twitt', 'twitter-'],
+            'ebay': ['ebay-', 'ebay1'],
+            'dropbox': ['dropbo', 'dropbox-'],
+            'github': ['githup', 'gitub', 'github-']
+        }
+        
+        # Check for brand typos (case-insensitive)
+        for brand, typo_patterns in brands.items():
+            for pattern in typo_patterns:
+                if pattern in hostname_lower:
+                    return True
+        
+        # Check for known phishing TLDs combined with brand-like names
+        phishing_indicators = [
+            r'bank.*login',
+            r'paypal.*verify',
+            r'amazon.*account',
+            r'apple.*id',
+            r'microsoft.*account'
+        ]
+        for pattern in phishing_indicators:
+            if re.search(pattern, hostname_lower):
+                return True
+        
+        return False
         
         return features
 

@@ -139,3 +139,12 @@ export function generateIncidentPlan(payload) {
     body: payload,
   });
 }
+
+export function getReports(params = {}) {
+  const query = new URLSearchParams(params).toString();
+  return request(`/reports${query ? `?${query}` : ""}`, { method: "GET" });
+}
+
+export function getReportStats() {
+  return request("/reports/stats/summary", { method: "GET" });
+}
