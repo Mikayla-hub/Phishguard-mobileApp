@@ -4,10 +4,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 // IMPORTANT: Verify this is still your current IPv4 address!
 const YOUR_LOCAL_IP = "172.20.10.2";
 
-const API_BASE_URL =
+export const BASE_URL =
   Platform.OS === "web"
-    ? "http://localhost:3001/api"
-    : `http://${YOUR_LOCAL_IP}:3001/api`;
+    ? "http://localhost:3001"
+    : `http://${YOUR_LOCAL_IP}:3001`;
+
+const API_BASE_URL = `${BASE_URL}/api`;
 
 let authToken = null;
 
@@ -87,6 +89,41 @@ export function resetPassword(email, otp, newPassword) {
   });
 }
 
+export function getProfile() {
+  return request("/auth/me", { method: "GET" });
+}
+
+export function updateProfile(name, email) {
+  return request("/auth/profile", {
+    method: "PUT",
+    body: { name, email },
+  });
+}
+
+export function changePassword(currentPassword, newPassword) {
+  return request("/auth/change-password", {
+    method: "PUT",
+    body: { currentPassword, newPassword },
+  });
+}
+
+export function deleteAccount() {
+  return request("/auth/account", { method: "DELETE" });
+}
+
+export function send2FACode() {
+  return request("/auth/2fa/send", { method: "POST" });
+}
+
+export function verify2FACode(code, enable) {
+  return request("/auth/2fa/verify", {
+    method: "POST",
+    body: { code, enable },
+  });
+}
+
+
+
 export function analyzePhishing(content, type) {
   return request("/phishing/analyze", {
     method: "POST",
@@ -107,10 +144,10 @@ export function getLearningModules() {
   });
 }
 
-export function generateModule(topic) {
+export function generateModule({ topic, level }) {
   return request("/learning/modules/generate", {
     method: "POST",
-    body: { topic },
+    body: { topic, level },
   });
 }
 

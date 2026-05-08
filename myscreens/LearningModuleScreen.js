@@ -498,7 +498,7 @@ const LearningModuleScreen = ({ navigation, route }) => {
     return (
       <View style={[styles.container, { justifyContent: "center", alignItems: "center", backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color="#1a73e8" />
-        <Text style={{ marginTop: 10, color: "#666" }}>Loading Module...</Text>
+        <Text style={{ marginTop: 10, color: "#333" }}>Loading Module...</Text>
       </View>
     );
   }
@@ -659,7 +659,7 @@ const styles = StyleSheet.create({
   },
   progressText: {
     fontSize: 12,
-    color: "#666",
+    color: "#333",
     fontWeight: "600",
   },
   scrollContent: {
@@ -727,7 +727,7 @@ const styles = StyleSheet.create({
   },
   expandIcon: {
     fontSize: 12,
-    color: "#666",
+    color: "#333",
   },
   flagDescription: {
     padding: 15,
@@ -758,7 +758,7 @@ const styles = StyleSheet.create({
   },
   emailLabel: {
     fontSize: 12,
-    color: "#888",
+    color: "#444",
     width: 60,
     fontWeight: "600",
   },
@@ -798,7 +798,7 @@ const styles = StyleSheet.create({
   urlNumber: {
     fontSize: 14,
     fontWeight: "bold",
-    color: "#666",
+    color: "#333",
     marginRight: 10,
     width: 20,
   },
@@ -882,7 +882,7 @@ const styles = StyleSheet.create({
   },
   practiceInstruction: {
     fontSize: 14,
-    color: "#666",
+    color: "#333",
     marginBottom: 15,
   },
   practiceEmailCard: {
@@ -897,7 +897,7 @@ const styles = StyleSheet.create({
   },
   practiceFrom: {
     fontSize: 12,
-    color: "#666",
+    color: "#333",
     marginBottom: 4,
   },
   practiceSubject: {
@@ -979,7 +979,7 @@ const styles = StyleSheet.create({
   },
   designQuality: {
     fontSize: 13,
-    color: "#666",
+    color: "#333",
   },
   checklistContainer: {
     marginBottom: 20,
@@ -1021,7 +1021,7 @@ const styles = StyleSheet.create({
   },
   checklistCategory: {
     fontSize: 12,
-    color: "#888",
+    color: "#444",
   },
   checklistScore: {
     backgroundColor: "#e8f0fe",
@@ -1036,7 +1036,7 @@ const styles = StyleSheet.create({
   },
   checklistScoreHint: {
     fontSize: 14,
-    color: "#666",
+    color: "#333",
     marginTop: 5,
   },
   summaryContainer: {
@@ -1092,7 +1092,7 @@ const styles = StyleSheet.create({
   },
   navButtonText: {
     fontSize: 16,
-    color: "#666",
+    color: "#333",
     fontWeight: "600",
   },
   navButtonDisabled: {
@@ -1130,7 +1130,7 @@ const styles = StyleSheet.create({
   },
   modalSubtitle: {
     fontSize: 16,
-    color: "#666",
+    color: "#333",
     marginBottom: 15,
   },
   scoreContainer: {
@@ -1154,7 +1154,7 @@ const styles = StyleSheet.create({
   },
   modalMessage: {
     fontSize: 14,
-    color: "#666",
+    color: "#333",
     textAlign: "center",
     lineHeight: 20,
     marginBottom: 20,

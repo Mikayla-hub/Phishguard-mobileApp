@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const db = require('../config/database');
+const { authenticate } = require('../middleware/auth');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const BCRYPT_ROUNDS = 12;
@@ -228,4 +229,193 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
+
+/**
+ * GET /api/auth/me
+ * Returns the current logged-in user's profile from Firebase
+ */
+router.get('/me', authenticate, async (req, res) => {
+  res.json({ user: { id: req.user.id, name: req.user.name, email: req.user.email, twoFA: req.user.twoFA || false } });
+});
+
+/**
+ * PUT /api/auth/profile
+ * Update display name and/or email for the authenticated user
+ */
+router.put('/profile', authenticate, async (req, res) => {
+  try {
+    const { name, email } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Name cannot be empty.' });
+    if (email && !isValidEmail(email)) return res.status(400).json({ error: 'Invalid email address.' });
+
+    const database = db.getDb();
+    const userId   = req.user.id;
+
+    // If email changed, make sure it isn't taken by another user
+    if (email && email !== req.user.email) {
+      const snap = await database.ref('users').orderByChild('email').equalTo(email).once('value');
+      if (snap.exists()) return res.status(400).json({ error: 'Email is already in use by another account.' });
+    }
+
+    const updates = { name: name.trim() };
+    if (email) updates.email = email.trim();
+
+    await database.ref(`users/${userId}`).update(updates);
+    res.json({ message: 'Profile updated successfully.', user: { ...req.user, ...updates } });
+  } catch (err) {
+    console.error('Profile update error:', err);
+    res.status(500).json({ error: 'Failed to update profile.' });
+  }
+});
+
+/**
+ * PUT /api/auth/change-password
+ * Verify currentPassword, then hash and save newPassword
+ */
+router.put('/change-password', authenticate, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current and new passwords are required.' });
+    }
+
+    const pwErrors = validatePassword(newPassword);
+    if (pwErrors.length > 0) {
+      return res.status(400).json({ error: `New password must contain: ${pwErrors.join(', ')}.` });
+    }
+
+    const database = db.getDb();
+    const snap     = await database.ref(`users/${req.user.id}`).once('value');
+    const user     = snap.val();
+
+    const match = await bcrypt.compare(currentPassword, user.password);
+    if (!match) return res.status(401).json({ error: 'Current password is incorrect.' });
+
+    const hashed = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await database.ref(`users/${req.user.id}`).update({ password: hashed });
+
+    res.json({ message: 'Password changed successfully.' });
+  } catch (err) {
+    console.error('Change password error:', err);
+    res.status(500).json({ error: 'Failed to change password.' });
+  }
+});
+
+/**
+ * DELETE /api/auth/account
+ * Permanently delete the user and all their associated data from Firebase
+ */
+router.delete('/account', authenticate, async (req, res) => {
+  try {
+    const database = db.getDb();
+    const userId   = req.user.id;
+
+    // Delete user record
+    await database.ref(`users/${userId}`).remove();
+
+    // Delete all associated data
+    const cleanups = [
+      database.ref('reports').orderByChild('userId').equalTo(userId).once('value')
+        .then(s => { const p = []; s.forEach(c => p.push(c.ref.remove())); return Promise.all(p); }),
+      database.ref('incidents').orderByChild('userId').equalTo(userId).once('value')
+        .then(s => { const p = []; s.forEach(c => p.push(c.ref.remove())); return Promise.all(p); }),
+      database.ref('learning_progress').orderByChild('user_id').equalTo(userId).once('value')
+        .then(s => { const p = []; s.forEach(c => p.push(c.ref.remove())); return Promise.all(p); }),
+      database.ref('achievements').orderByChild('userId').equalTo(userId).once('value')
+        .then(s => { const p = []; s.forEach(c => p.push(c.ref.remove())); return Promise.all(p); }),
+      database.ref(`password_resets/${userId}`).remove(),
+    ];
+
+    await Promise.all(cleanups);
+    res.json({ message: 'Account and all data permanently deleted.' });
+  } catch (err) {
+    console.error('Delete account error:', err);
+    res.status(500).json({ error: 'Failed to delete account.' });
+  }
+});
+
+/**
+ * POST /api/auth/2fa/send
+ * Generates a 6-digit 2FA code, saves it to Firebase, and emails it to the user.
+ */
+router.post('/2fa/send', authenticate, async (req, res) => {
+  try {
+    const database = db.getDb();
+    const userId   = req.user.id;
+    const email    = req.user.email;
+
+    const code      = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+    await database.ref(`two_fa_codes/${userId}`).set({ code, expiresAt, email });
+
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      await transporter.sendMail({
+        from: `"PhishGuard Security" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: 'Your PhishGuard 2FA Verification Code',
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden">
+            <div style="background:#1a73e8;padding:24px;text-align:center">
+              <h2 style="color:#fff;margin:0">🛡️ PhishGuard 2FA</h2>
+            </div>
+            <div style="padding:32px">
+              <h3 style="color:#333">Two-Factor Authentication Setup</h3>
+              <p style="color:#555">Enter this code in the app to enable 2FA. It expires in <strong>10 minutes</strong>.</p>
+              <div style="background:#f0f4ff;border-radius:8px;padding:20px;text-align:center;margin:24px 0">
+                <span style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#1a73e8">${code}</span>
+              </div>
+              <p style="color:#888;font-size:13px">If you did not request this, please secure your account immediately.</p>
+            </div>
+          </div>
+        `,
+      });
+    } else {
+      // Dev fallback — log to console
+      console.log(`[2FA][DEV] Code for ${email}: ${code}`);
+    }
+
+    res.json({ message: '2FA code sent to your email address.' });
+  } catch (err) {
+    console.error('2FA send error:', err);
+    res.status(500).json({ error: 'Failed to send 2FA code.' });
+  }
+});
+
+/**
+ * POST /api/auth/2fa/verify
+ * Validates the code and enables or disables 2FA on the account.
+ * Body: { code: "123456", enable: true|false }
+ */
+router.post('/2fa/verify', authenticate, async (req, res) => {
+  try {
+    const { code, enable } = req.body;
+    if (!code) return res.status(400).json({ error: 'Verification code is required.' });
+
+    const database = db.getDb();
+    const userId   = req.user.id;
+
+    const snap = await database.ref(`two_fa_codes/${userId}`).once('value');
+    const data  = snap.val();
+
+    if (!data) return res.status(400).json({ error: 'No code found. Please request a new one.' });
+    if (data.code !== code) return res.status(400).json({ error: 'Incorrect code. Please try again.' });
+    if (Date.now() > data.expiresAt) {
+      await database.ref(`two_fa_codes/${userId}`).remove();
+      return res.status(400).json({ error: 'Code has expired. Please request a new one.' });
+    }
+
+    // Save 2FA status to the user record
+    await database.ref(`users/${userId}`).update({ twoFA: enable !== false });
+    await database.ref(`two_fa_codes/${userId}`).remove();
+
+    res.json({ message: enable !== false ? '2FA enabled successfully.' : '2FA disabled successfully.', twoFA: enable !== false });
+  } catch (err) {
+    console.error('2FA verify error:', err);
+    res.status(500).json({ error: 'Failed to verify 2FA code.' });
+  }
+});
+
 module.exports = router;
+
+

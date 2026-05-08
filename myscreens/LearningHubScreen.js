@@ -6,6 +6,19 @@ import {
 import { getLearningModules, generateModule } from "../services/api";
 import { useTheme } from "../contexts/ThemeContext";
 
+// Must match BASE_TOPICS in backend/routes/learning.js
+const BASE_TOPICS = [
+  "Security Awareness Training",
+  "Security Culture",
+  "Social Engineering",
+  "Phishing",
+  "Spear Phishing",
+  "CEO Fraud",
+  "Ransomware",
+  "Multi-Factor Authentication",
+  "Global Compliance and Regulations",
+];
+
 // ─── config ─────────────────────────────────────────────────────────────────
 
 const LEVELS = {
@@ -43,11 +56,12 @@ function topicIcon(title = "") {
 
 export default function LearningHubScreen({ navigation }) {
   const { colors, isDarkMode } = useTheme();
-  const [allModules, setAllModules]   = useState([]);
-  const [level, setLevel]             = useState("beginner");
-  const [refreshing, setRefreshing]   = useState(false);
-  const [loading, setLoading]         = useState(true);
-  const [generating, setGenerating]   = useState(false);
+  const [allModules, setAllModules]     = useState([]);
+  const [pendingTopics, setPendingTopics] = useState([]);
+  const [level, setLevel]               = useState("beginner");
+  const [refreshing, setRefreshing]     = useState(false);
+  const [loading, setLoading]           = useState(true);
+  const [generating, setGenerating]     = useState(false);
 
   const load = useCallback(async (refresh = false) => {
     if (refresh) setRefreshing(true);
@@ -55,8 +69,13 @@ export default function LearningHubScreen({ navigation }) {
       const res = await getLearningModules();
       if (res?.modules?.length > 0) {
         const valid = res.modules.filter(m => (m.totalLessons || 0) >= 1);
-        setAllModules(valid.length > 0 ? valid : res.modules);
+        const list  = valid.length > 0 ? valid : res.modules;
+        // Newest first — so a just-generated module appears at the top
+        list.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        setAllModules(list);
       }
+      // Store pending combos so generate always picks something new
+      if (res?.pendingTopics) setPendingTopics(res.pendingTopics);
     } catch {
       // silently fail — empty state shown
     } finally {
@@ -76,9 +95,28 @@ export default function LearningHubScreen({ navigation }) {
   const handleGenerate = async () => {
     setGenerating(true);
     try {
-      await generateModule({ difficulty: level });
+      // Find a pending topic for the selected level (not yet generated)
+      const pendingForLevel = pendingTopics.filter(
+        p => p.level?.toLowerCase() === level
+      );
+
+      if (pendingForLevel.length === 0) {
+        Alert.alert(
+          "All modules complete! 🎉",
+          `All ${LEVELS[level].label} topics have already been generated. Pull down to refresh or switch levels.`
+        );
+        setGenerating(false);
+        return;
+      }
+
+      // Pick a random pending topic so every tap creates something new
+      const pick = pendingForLevel[Math.floor(Math.random() * pendingForLevel.length)];
+      await generateModule({ topic: pick.topic, level: pick.level });
       await load();
-      Alert.alert("✅ Module Generated", `A new ${LEVELS[level].label} module is ready!`);
+      Alert.alert(
+        "✅ Module Generated",
+        `New ${LEVELS[level].label} module on "${pick.topic}" is ready!`
+      );
     } catch (e) {
       Alert.alert("Error", e?.message || "Could not generate module.");
     } finally {
@@ -149,15 +187,24 @@ export default function LearningHubScreen({ navigation }) {
         </View>
 
         {/* Generate button */}
-        <TouchableOpacity
-          style={[s.genBtn, { backgroundColor: cfg.color }]}
-          onPress={handleGenerate}
-          disabled={generating}
-        >
-          {generating
-            ? <ActivityIndicator color="#fff" size="small" />
-            : <Text style={s.genBtnText}>✨ Generate New {cfg.label} Module</Text>}
-        </TouchableOpacity>
+        {(() => {
+          const pending = pendingTopics.filter(p => p.level?.toLowerCase() === level).length;
+          return (
+            <TouchableOpacity
+              style={[s.genBtn, { backgroundColor: pending === 0 ? "#aaa" : cfg.color }]}
+              onPress={handleGenerate}
+              disabled={generating || pending === 0}
+            >
+              {generating
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <Text style={s.genBtnText}>
+                    {pending === 0
+                      ? `✅ All ${cfg.label} Modules Generated`
+                      : `✨ Generate New ${cfg.label} Module (${pending} remaining)`}
+                  </Text>}
+            </TouchableOpacity>
+          );
+        })()}
 
         {/* Module list */}
         <Text style={[s.sectionTitle, { color: colors.text }]}>
@@ -176,8 +223,8 @@ export default function LearningHubScreen({ navigation }) {
           </View>
         ) : (
           <View style={s.moduleList}>
-            {filtered.map(mod => {
-              const lv  = LEVELS[(mod.difficulty || "beginner").toLowerCase()] || LEVELS.beginner;
+            {filtered.map((mod) => {
+              const lv   = LEVELS[(mod.difficulty || "beginner").toLowerCase()] || LEVELS.beginner;
               const icon = topicIcon(mod.title);
               return (
                 <TouchableOpacity
@@ -186,6 +233,7 @@ export default function LearningHubScreen({ navigation }) {
                   activeOpacity={0.85}
                   onPress={() => navigation.navigate("LearningModuleScreen", { moduleId: mod.id })}
                 >
+
                   {/* Icon box */}
                   <View style={[s.iconBox, { backgroundColor: lv.bg }]}>
                     <Text style={s.iconText}>{icon}</Text>
@@ -262,7 +310,7 @@ const s = StyleSheet.create({
     elevation: 2, shadowColor: "#000", shadowOpacity: 0.05, shadowOffset: { width: 0, height: 2 },
   },
   statValue:  { fontSize: 20, fontWeight: "800" },
-  statLabel:  { fontSize: 9, color: "#888", fontWeight: "700", marginTop: 2, textAlign: "center" },
+  statLabel:  { fontSize: 9, color: "#444", fontWeight: "700", marginTop: 2, textAlign: "center" },
 
   tabRow:     { flexDirection: "row", paddingHorizontal: 16, marginBottom: 14, gap: 8 },
   tab: {
@@ -271,7 +319,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     elevation: 1,
   },
-  tabText:    { fontSize: 12, fontWeight: "700", color: "#666" },
+  tabText:    { fontSize: 12, fontWeight: "700", color: "#333" },
 
   genBtn: {
     marginHorizontal: 16, paddingVertical: 14, borderRadius: 12,
@@ -288,13 +336,14 @@ const s = StyleSheet.create({
     backgroundColor: "#fff", borderRadius: 14, padding: 14, marginBottom: 12,
     elevation: 2, shadowColor: "#000", shadowOpacity: 0.06, shadowOffset: { width: 0, height: 2 },
   },
+
   iconBox:    { width: 52, height: 52, borderRadius: 12, justifyContent: "center", alignItems: "center", marginRight: 12 },
   iconText:   { fontSize: 26 },
   moduleInfo: { flex: 1 },
   moduleTitle:{ fontSize: 15, fontWeight: "700", marginBottom: 5 },
   moduleMeta: { flexDirection: "row", gap: 8 },
-  metaChip:   { fontSize: 11, color: "#888", backgroundColor: "#f4f6fb", borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
-  moduleDesc: { fontSize: 12, color: "#888", marginTop: 5, lineHeight: 17 },
+  metaChip:   { fontSize: 12, color: "#444", backgroundColor: "#f4f6fb", borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2 },
+  moduleDesc: { fontSize: 12, color: "#444", marginTop: 5, lineHeight: 17 },
   rightCol:   { alignItems: "center", marginLeft: 8 },
   levelBadge: { width: 30, height: 30, borderRadius: 15, justifyContent: "center", alignItems: "center", marginBottom: 4 },
   levelBadgeText: { fontSize: 14 },
@@ -303,7 +352,7 @@ const s = StyleSheet.create({
   empty:      { alignItems: "center", padding: 40 },
   emptyIcon:  { fontSize: 50, marginBottom: 12 },
   emptyTitle: { fontSize: 18, fontWeight: "800", color: "#333", marginBottom: 6 },
-  emptyText:  { fontSize: 14, color: "#888", textAlign: "center", lineHeight: 21 },
+  emptyText:  { fontSize: 14, color: "#444", textAlign: "center", lineHeight: 21 },
 
   tipsCard: {
     margin: 16, backgroundColor: "#e8f0fe", borderRadius: 14, padding: 16,

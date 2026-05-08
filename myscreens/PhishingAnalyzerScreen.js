@@ -19,7 +19,8 @@ import * as ImagePicker from 'expo-image-picker';
 
 const PhishingAnalyzerScreen = ({ navigation }) => {
   const [inputText, setInputText] = useState("");
-  const [analysisType, setAnalysisType] = useState("url"); // 'url', 'email', or 'image'
+  const [senderEmail, setSenderEmail] = useState("");
+  const [analysisType, setAnalysisType] = useState("url");
   const [imageUri, setImageUri] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
@@ -86,7 +87,12 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
     startScanAnimation();
 
     try {
-      const response = await analyzePhishing(inputText, analysisType);
+      // Build analysis text — prepend sender for better ML context
+      const analysisText = analysisType === "email" && senderEmail.trim()
+        ? `From: ${senderEmail.trim()}\n\n${inputText}`
+        : inputText;
+
+      const response = await analyzePhishing(analysisText, analysisType);
       const analysis = response?.analysis;
 
       if (!analysis) {
@@ -137,6 +143,7 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
 
   const clearAnalysis = () => {
     setInputText("");
+    setSenderEmail("");
     setImageUri(null);
     setResults(null);
   };
@@ -158,7 +165,11 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
         title: `Automated Analyzer Threat: ${threatPrefix}`,
         incidentType: incidentType,
         severity: calculatedSeverity,
-        description: `Automated ML scanner detected a risk score of ${results.riskScore}/100.\nIndicators: ${results.detectedIndicators.join(", ")}`
+        description: [
+          `Automated ML scanner detected a risk score of ${results.riskScore}/100.`,
+          senderEmail ? `Sender: ${senderEmail}` : null,
+          `Indicators: ${results.detectedIndicators.join(", ")}`,
+        ].filter(Boolean).join("\n"),
       };
       
       await generateIncidentPlan(payload);
@@ -245,20 +256,42 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
                 )}
               </View>
             ) : (
-              <TextInput
-                style={[styles.textInput, analysisType === "email" && styles.textInputMultiline]}
-                placeholder={
-                  analysisType === "url"
-                    ? "https://example.com/suspicious-link"
-                    : "Paste the suspicious email content here..."
-                }
-                value={inputText}
-                onChangeText={setInputText}
-                multiline={analysisType === "email"}
-                numberOfLines={analysisType === "email" ? 6 : 1}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
+              <>
+                {/* Sender email — email mode only */}
+                {analysisType === "email" && (
+                  <View style={styles.senderRow}>
+                    <Text style={styles.senderLabel}>✉️ Sender email address</Text>
+                    <TextInput
+                      style={styles.senderInput}
+                      placeholder="noreply@suspicious-domain.com"
+                      value={senderEmail}
+                      onChangeText={setSenderEmail}
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                      autoCorrect={false}
+                    />
+                    {senderEmail.length > 0 && senderEmail.includes("@") && (
+                      <Text style={styles.senderOk}>✓ Sender address will be included in analysis</Text>
+                    )}
+                  </View>
+                )}
+
+                {/* Main content input */}
+                <TextInput
+                  style={[styles.textInput, analysisType === "email" && styles.textInputMultiline]}
+                  placeholder={
+                    analysisType === "url"
+                      ? "https://example.com/suspicious-link"
+                      : "Paste the suspicious email body here..."
+                  }
+                  value={inputText}
+                  onChangeText={setInputText}
+                  multiline={analysisType === "email"}
+                  numberOfLines={analysisType === "email" ? 5 : 1}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </>
             )}
             
             <View style={styles.buttonRow}>
@@ -364,12 +397,13 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
                     prefilledContent: inputText,
                     analysisResults:  results,
                     reportType: analysisType === "image" ? "other" : analysisType,
+                    senderEmail: senderEmail || undefined,
                   })}
                 >
                   <Text style={styles.reportButtonText}>🚨 Report This</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.learnButton, isGeneratingPlan && { backgroundColor: "#888" }]}
+                  style={[styles.learnButton, isGeneratingPlan && { backgroundcolor: "#444" }]}
                   onPress={handleGeneratePlan}
                   disabled={isGeneratingPlan}
                 >
@@ -474,7 +508,7 @@ const styles = StyleSheet.create({
   typeButtonText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#666",
+    color: "#333",
   },
   typeButtonTextActive: {
     color: "#1a73e8",
@@ -508,6 +542,34 @@ const styles = StyleSheet.create({
     minHeight: 120,
     textAlignVertical: "top",
   },
+  senderRow: {
+    marginBottom: 10,
+    backgroundColor: "#f0f4ff",
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#c5d5fb",
+  },
+  senderLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#1a73e8",
+    marginBottom: 6,
+  },
+  senderInput: {
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 13,
+    borderWidth: 1,
+    borderColor: "#dce8ff",
+  },
+  senderOk: {
+    fontSize: 12,
+    color: "#34a853",
+    fontWeight: "700",
+    marginTop: 5,
+  },
   imageUploadContainer: {
     marginBottom: 15,
     alignItems: 'center',
@@ -528,7 +590,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   uploadText: {
-    color: '#666',
+    color: '#333',
     fontSize: 14,
   },
   previewImage: {
@@ -571,7 +633,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   clearButtonText: {
-    color: "#666",
+    color: "#333",
     fontWeight: "600",
   },
   scanningContainer: {
@@ -599,7 +661,7 @@ const styles = StyleSheet.create({
   scanningSubtext: {
     marginTop: 5,
     fontSize: 13,
-    color: "#666",
+    color: "#333",
   },
   resultsContainer: {
     marginBottom: 20,
@@ -637,7 +699,7 @@ const styles = StyleSheet.create({
   },
   scoreLabel: {
     fontSize: 12,
-    color: "#666",
+    color: "#333",
   },
   riskMeter: {
     marginTop: 10,
@@ -658,8 +720,8 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   riskMeterLabel: {
-    fontSize: 10,
-    color: "#888",
+    fontSize: 11,
+    color: "#444",
   },
   indicatorsCard: {
     backgroundColor: "#fff",

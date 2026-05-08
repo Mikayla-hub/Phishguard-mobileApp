@@ -76,7 +76,7 @@ const CATEGORY_RULES = [
     id: "unknown",
     name: "Suspicious Content",
     icon: "❓",
-    color: "#666",
+    color: "#333",
     patterns: [],
     description: "Requires manual review",
   },
@@ -90,7 +90,7 @@ const SEVERITY_LEVELS = [
 ];
 
 const ReportPhishingScreen = ({ navigation, route }) => {
-  const { prefilledContent, analysisResults, reportType: passedType } = route.params || {};
+  const { prefilledContent, analysisResults, reportType: passedType, senderEmail: passedSenderEmail } = route.params || {};
 
   // Infer type from content if not explicitly passed
   const inferredType = (() => {
@@ -106,7 +106,7 @@ const ReportPhishingScreen = ({ navigation, route }) => {
   const [suspiciousContent, setSuspiciousContent] = useState(
     inferredType === "url" ? "" : (prefilledContent || "")
   );
-  const [senderInfo, setSenderInfo] = useState("");
+  const [senderInfo, setSenderInfo] = useState(passedSenderEmail || "");
   const [urlLink, setUrlLink] = useState(
     inferredType === "url" ? (prefilledContent || "") : ""
   );
@@ -344,34 +344,99 @@ const ReportPhishingScreen = ({ navigation, route }) => {
             />
           </View>
 
-          {/* Sender Information */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Sender Information</Text>
-            <TextInput
-              style={styles.textInput}
-              placeholder={
-                reportType === "email"
-                  ? "sender@example.com"
-                  : reportType === "sms"
-                  ? "Phone number"
-                  : "Website domain"
-              }
-              value={senderInfo}
-              onChangeText={setSenderInfo}
-              autoCapitalize="none"
-            />
-          </View>
-
-          {/* URL Link */}
+          {/* ── Email-specific fields ── */}
           {reportType === "email" && (
+            <>
+              {/* Sender Email Address */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>
+                  Sender Email Address <Text style={styles.fieldHint}>(recommended)</Text>
+                </Text>
+                <View style={styles.emailInputRow}>
+                  <Text style={styles.emailAtIcon}>✉️</Text>
+                  <TextInput
+                    style={[styles.textInput, styles.emailInput]}
+                    placeholder="e.g. noreply@paypa1-secure.com"
+                    value={senderInfo}
+                    onChangeText={setSenderInfo}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    autoCorrect={false}
+                  />
+                </View>
+                {senderInfo.length > 0 && !senderInfo.includes("@") && (
+                  <Text style={styles.fieldWarning}>⚠️ Doesn't look like a valid email address</Text>
+                )}
+                {senderInfo.length > 0 && senderInfo.includes("@") && (
+                  <Text style={styles.fieldOk}>✓ Sender address captured</Text>
+                )}
+                <Text style={styles.fieldTip}>
+                  💡 Tip: Hover over the "From" name in your email client to reveal the real address
+                </Text>
+              </View>
+
+              {/* Email Subject */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>
+                  Email Subject Line <Text style={styles.fieldHint}>(optional)</Text>
+                </Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder='e.g. "Your account has been compromised"'
+                  value={urlLink}
+                  onChangeText={setUrlLink}
+                  autoCorrect={false}
+                />
+              </View>
+
+              {/* Suspicious link inside the email */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>
+                  Suspicious Link in Email <Text style={styles.fieldHint}>(optional)</Text>
+                </Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="https://suspicious-link.com"
+                  value={additionalNotes.startsWith("Link: ") ? additionalNotes.replace("Link: ", "") : ""}
+                  onChangeText={(v) => setAdditionalNotes(v ? `Link: ${v}` : "")}
+                  autoCapitalize="none"
+                  keyboardType="url"
+                  autoCorrect={false}
+                />
+              </View>
+            </>
+          )}
+
+          {/* ── URL-specific sender field ── */}
+          {reportType === "url" && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Suspicious Link (if any)</Text>
+              <Text style={styles.sectionTitle}>
+                Domain / Website <Text style={styles.fieldHint}>(optional)</Text>
+              </Text>
               <TextInput
                 style={styles.textInput}
-                placeholder="https://suspicious-link.com"
-                value={urlLink}
-                onChangeText={setUrlLink}
+                placeholder="e.g. paypa1-secure.com"
+                value={senderInfo}
+                onChangeText={setSenderInfo}
                 autoCapitalize="none"
+                keyboardType="url"
+                autoCorrect={false}
+              />
+            </View>
+          )}
+
+          {/* ── SMS-specific sender field ── */}
+          {reportType === "sms" && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                Sender Phone Number <Text style={styles.fieldHint}>(optional)</Text>
+              </Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. +263 77 123 4567"
+                value={senderInfo}
+                onChangeText={setSenderInfo}
+                keyboardType="phone-pad"
               />
             </View>
           )}
@@ -608,6 +673,24 @@ const styles = StyleSheet.create({
     color: "#333",
     marginBottom: 10,
   },
+  fieldHint:    { fontSize: 12, fontWeight: "600", color: "#333" },
+  fieldWarning: { fontSize: 12, color: "#e65100", marginTop: 5, fontWeight: "600" },
+  fieldOk:      { fontSize: 12, color: "#34a853", marginTop: 5, fontWeight: "700" },
+  fieldTip: {
+    fontSize: 12, color: "#444", marginTop: 8,
+    backgroundColor: "#f8f9fa", borderRadius: 8,
+    padding: 8, lineHeight: 17,
+  },
+  emailInputRow: {
+    flexDirection: "row", alignItems: "center",
+    borderWidth: 1, borderColor: "#ddd", borderRadius: 8,
+    backgroundColor: "#fafafa", overflow: "hidden",
+  },
+  emailAtIcon: { fontSize: 18, paddingHorizontal: 10 },
+  emailInput: {
+    flex: 1, borderWidth: 0, borderRadius: 0,
+    backgroundColor: "transparent", marginBottom: 0,
+  },
   typeSelector: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -632,7 +715,7 @@ const styles = StyleSheet.create({
   },
   typeLabel: {
     fontSize: 12,
-    color: "#666",
+    color: "#333",
     textAlign: "center",
   },
   typeLabelActive: {
@@ -678,7 +761,7 @@ const styles = StyleSheet.create({
   },
   categoryDescription: {
     fontSize: 12,
-    color: "#666",
+    color: "#333",
     marginTop: 2,
   },
   categoryBadge: {
@@ -688,7 +771,7 @@ const styles = StyleSheet.create({
   },
   categoryBadgeText: {
     color: "#fff",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "bold",
   },
   severityContainer: {
@@ -717,8 +800,8 @@ const styles = StyleSheet.create({
     color: "#333",
   },
   severityDesc: {
-    fontSize: 11,
-    color: "#888",
+    fontSize: 12,
+    color: "#444",
     marginTop: 2,
   },
   checkMark: {
@@ -737,7 +820,7 @@ const styles = StyleSheet.create({
   },
   analysisLabel: {
     fontSize: 14,
-    color: "#666",
+    color: "#333",
   },
   analysisValue: {
     fontSize: 14,
@@ -805,7 +888,7 @@ const styles = StyleSheet.create({
   },
   reportIdLabel: {
     fontSize: 12,
-    color: "#666",
+    color: "#333",
   },
   reportIdValue: {
     fontSize: 18,
@@ -816,7 +899,7 @@ const styles = StyleSheet.create({
   },
   modalMessage: {
     fontSize: 14,
-    color: "#666",
+    color: "#333",
     textAlign: "center",
     lineHeight: 20,
     marginBottom: 15,
@@ -827,7 +910,7 @@ const styles = StyleSheet.create({
   },
   modalCategoryLabel: {
     fontSize: 12,
-    color: "#888",
+    color: "#444",
     marginBottom: 8,
   },
   modalCategoryBadge: {
@@ -844,10 +927,10 @@ const styles = StyleSheet.create({
   modalButtonPrimary: { backgroundColor: "#1a73e8", padding: 15, borderRadius: 10, alignItems: "center", marginBottom: 10 },
   modalButtonPrimaryText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
   modalButtonSecondary: { backgroundColor: "#f0f0f0", padding: 15, borderRadius: 10, alignItems: "center" },
-  modalButtonSecondaryText: { color: "#666", fontWeight: "600", fontSize: 14 },
+  modalButtonSecondaryText: { color: "#333", fontWeight: "600", fontSize: 14 },
 
   // New success modal styles
-  modalSubtitle: { fontSize: 13, color: "#666", textAlign: "center", marginBottom: 14, lineHeight: 19 },
+  modalSubtitle: { fontSize: 13, color: "#333", textAlign: "center", marginBottom: 14, lineHeight: 19 },
 
   adviceBox: {
     backgroundColor: "#fff8e1", borderRadius: 12, padding: 14,
@@ -858,7 +941,7 @@ const styles = StyleSheet.create({
   adviceDot:   { color: "#f9ab00", fontWeight: "800", marginRight: 6, fontSize: 14 },
   adviceText:  { fontSize: 12, color: "#333", flex: 1, lineHeight: 18 },
 
-  nextStepsLabel: { fontSize: 12, fontWeight: "700", color: "#aaa", letterSpacing: 0.5, marginBottom: 10, width: "100%", textAlign: "center" },
+  nextStepsLabel: { fontSize: 12, fontWeight: "700", color: "#333", letterSpacing: 0.5, marginBottom: 10, width: "100%", textAlign: "center" },
 
   nextStepBtnPrimary: {
     backgroundColor: "#d93025", borderRadius: 12, paddingVertical: 13,
@@ -876,7 +959,7 @@ const styles = StyleSheet.create({
 
   modalBottomRow: { flexDirection: "row", justifyContent: "space-between", width: "100%" },
   modalBtnGhost: { flex: 1, alignItems: "center", padding: 10 },
-  modalBtnGhostText: { color: "#999", fontSize: 13, fontWeight: "600" },
+  modalBtnGhostText: { color: "#555", fontSize: 13, fontWeight: "600" },
   // Benefits banner
   benefitsBanner: {
     backgroundColor: "#fff", borderRadius: 14, marginBottom: 16,
@@ -899,7 +982,7 @@ const styles = StyleSheet.create({
   benefitIcon:  { fontSize: 24, marginRight: 12, marginTop: 2 },
   benefitText:  { flex: 1 },
   benefitTitle: { fontSize: 13, fontWeight: "800", color: "#1c1c1e", marginBottom: 3 },
-  benefitDesc:  { fontSize: 12, color: "#666", lineHeight: 18 },
+  benefitDesc:  { fontSize: 12, color: "#333", lineHeight: 18 },
 });
 
 export default ReportPhishingScreen;

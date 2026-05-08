@@ -15,6 +15,7 @@ const phishingRoutes = require('./routes/phishing');
 const learningRoutes = require('./routes/learning');
 const reportRoutes = require('./routes/reports');
 const incidentRoutes = require('./routes/incidents');
+const notificationRoutes = require('./routes/notifications');
 
 // Import database
 const db = require('./config/database');
@@ -91,6 +92,7 @@ app.use('/api/phishing', phishingRoutes);
 app.use('/api/learning', learningRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/incidents', incidentRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // 404 handler
 app.use((req, res) => {

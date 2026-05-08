@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { NavigationContainer } from '@react-navigation/native';
 
@@ -20,12 +20,18 @@ import ResetPasswordScreen from "./myscreens/ResetPasswordScreen";
 import LearningHubScreen from "./myscreens/LearningHubScreen";
 import PhishingReportsDashboard from "./myscreens/PhishingReportsDashboard";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { initDailySecurityTip } from "./services/notificationService";
 
 const Stack = createNativeStackNavigator();
 
 
 
 export default function App() {
+  useEffect(() => {
+    // Schedule daily 9am AI security tip notification
+    initDailySecurityTip().catch(console.warn);
+  }, []);
+
   return (
     <ThemeProvider>
       <NavigationContainer>

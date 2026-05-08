@@ -428,7 +428,7 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
   },
   tipIcon:  { fontSize: 28, marginRight: 12 },
-  tipLabel: { fontSize: 10, fontWeight: "800", color: "rgba(255,255,255,0.7)", letterSpacing: 1 },
+  tipLabel: { fontSize: 11, fontWeight: "800", color: "rgba(255,255,255,0.7)", letterSpacing: 1 },
   tipText:  { fontSize: 13, color: "#fff", fontWeight: "600", lineHeight: 19, marginTop: 2 },
 
   dotRow: { flexDirection: "row", justifyContent: "center", marginBottom: 16 },
@@ -458,7 +458,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionTitle: { fontSize: 20, fontWeight: "800", color: "#1c1c1e" },
-  sectionSub:   { fontSize: 12, color: "#888", marginTop: 2 },
+  sectionSub:   { fontSize: 12, color: "#444", marginTop: 2 },
   badge: {
     backgroundColor: "#d93025",
     width: 28, height: 28,
@@ -503,7 +503,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderBottomRightRadius: 10,
   },
-  newestBadgeText: { color: "#fff", fontSize: 11, fontWeight: "800", letterSpacing: 0.5 },
+  newestBadgeText: { color: "#fff", fontSize: 12, fontWeight: "800", letterSpacing: 0.5 },
 
   cardHeader: {
     flexDirection: "row",
@@ -520,17 +520,17 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   severityPillIcon: { fontSize: 16 },
-  severityPillText: { fontSize: 11, fontWeight: "800", letterSpacing: 0.5 },
+  severityPillText: { fontSize: 12, fontWeight: "800", letterSpacing: 0.5 },
 
   cardMeta:  { flex: 1 },
   cardTitle: { fontSize: 15, fontWeight: "800", color: "#1c1c1e", lineHeight: 21 },
-  cardDate:  { fontSize: 11, color: "#999", marginTop: 3 },
+  cardDate:  { fontSize: 12, color: "#555", marginTop: 3 },
 
   progressTrack: { height: 5, backgroundColor: "#eee", borderRadius: 3, marginTop: 8 },
   progressFill:  { height: "100%", borderRadius: 3 },
-  progressLabel: { fontSize: 11, fontWeight: "700", marginTop: 4 },
+  progressLabel: { fontSize: 12, fontWeight: "700", marginTop: 4 },
 
-  chevron: { fontSize: 13, color: "#aaa", marginLeft: 6 },
+  chevron: { fontSize: 13, color: "#333", marginLeft: 6 },
 
   // Card body
   cardBody: {
@@ -579,8 +579,8 @@ const styles = StyleSheet.create({
   checkmark:  { color: "#fff", fontWeight: "800", fontSize: 14 },
 
   stepTopRow: { flexDirection: "row", alignItems: "center", marginBottom: 5 },
-  stepNum:    { fontSize: 12, fontWeight: "800", color: "#888", marginRight: 8 },
-  strikeText: { textDecorationLine: "line-through", color: "#aaa" },
+  stepNum:    { fontSize: 12, fontWeight: "800", color: "#444", marginRight: 8 },
+  strikeText: { textDecorationLine: "line-through", color: "#333" },
 
   durationChip: {
     backgroundColor: "#e8f0fe",
@@ -588,7 +588,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 8,
   },
-  durationText: { fontSize: 11, color: "#1a73e8", fontWeight: "700" },
+  durationText: { fontSize: 12, color: "#1a73e8", fontWeight: "700" },
 
   stepAction: {
     fontSize: 15,

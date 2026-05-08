@@ -71,7 +71,7 @@ const Homescreen = ({ navigation }) => {
       icon: "⚙️",
       title: "Settings",
       subtitle: "Preferences, theme & account",
-      color: "#666",
+      color: "#333",
       bg: "#f5f5f5",
       screen: "SettingsScreen",
     },
@@ -202,7 +202,7 @@ const s = StyleSheet.create({
   },
   quickIcon:   { fontSize: 32, marginBottom: 6 },
   quickTitle:  { color: "#fff", fontSize: 14, fontWeight: "800", letterSpacing: 0.5 },
-  quickSub:    { color: "rgba(255,255,255,0.8)", fontSize: 11, marginTop: 3, textAlign: "center" },
+  quickSub:    { color: "rgba(255,255,255,0.8)", fontSize: 12, marginTop: 3, textAlign: "center" },
 
   sectionTitle:{ fontSize: 18, fontWeight: "800", marginBottom: 12 },
 
@@ -218,7 +218,7 @@ const s = StyleSheet.create({
   gridIconBox: { width: 48, height: 48, borderRadius: 12, justifyContent: "center", alignItems: "center", marginBottom: 10 },
   gridIcon:    { fontSize: 24 },
   gridTitle:   { fontSize: 14, fontWeight: "800", marginBottom: 4 },
-  gridSub:     { fontSize: 11, color: "#888", lineHeight: 16 },
+  gridSub:     { fontSize: 12, color: "#444", lineHeight: 16 },
   gridAccent:  { position: "absolute", bottom: 0, left: 0, right: 0, height: 3, borderBottomLeftRadius: 16, borderBottomRightRadius: 16 },
 
   tipCard: {

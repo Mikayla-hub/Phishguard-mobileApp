@@ -22,7 +22,7 @@ const CATEGORY_DEFS = {
   prize_scam:          { label: "Prize / Lottery Scam",icon: "🎰", color: "#ff6d00" },
   tech_support:        { label: "Tech Support Scam",   icon: "🖥️", color: "#1a73e8" },
   romance_scam:        { label: "Social Engineering",  icon: "💔", color: "#e91e63" },
-  unknown:             { label: "Suspicious Content",  icon: "❓", color: "#666"    },
+  unknown:             { label: "Suspicious Content",  icon: "❓", color: "#333"    },
 };
 
 const CATEGORY_RULES = [
@@ -421,7 +421,7 @@ const s = StyleSheet.create({
     elevation: 2, shadowColor: "#000", shadowOpacity: 0.06, shadowOffset: { width: 0, height: 2 },
   },
   statValue: { fontSize: 22, fontWeight: "800" },
-  statLabel: { fontSize: 10, color: "#888", fontWeight: "600", marginTop: 2 },
+  statLabel: { fontSize: 11, color: "#444", fontWeight: "600", marginTop: 2 },
 
   card: {
     backgroundColor: "#fff", borderRadius: 14, padding: 16, marginBottom: 14,
@@ -436,7 +436,7 @@ const s = StyleSheet.create({
   typeChipIcon: { fontSize: 14 },
   typeChipLabel: { fontSize: 12, fontWeight: "700", color: "#333" },
   typeChipBadge: { backgroundColor: "#d93025", borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1 },
-  typeChipCount: { color: "#fff", fontSize: 11, fontWeight: "800" },
+  typeChipCount: { color: "#fff", fontSize: 12, fontWeight: "800" },
 
   btnRow: { flexDirection: "row", gap: 10, marginBottom: 20 },
   btn: {
@@ -458,22 +458,22 @@ const s = StyleSheet.create({
   typePillText: { fontSize: 12, fontWeight: "700", color: "#333" },
   pillRow:      { flexDirection: "row", flexWrap: "wrap", gap: 6, flex: 1 },
   mediumPill:   { backgroundColor: "#f0f0f0", borderRadius: 20, paddingHorizontal: 9, paddingVertical: 4 },
-  mediumPillText: { fontSize: 11, fontWeight: "700", color: "#555" },
+  mediumPillText: { fontSize: 12, fontWeight: "700", color: "#555" },
   catPill:      { borderRadius: 20, paddingHorizontal: 9, paddingVertical: 4, borderWidth: 1 },
-  catPillText:  { fontSize: 11, fontWeight: "700" },
+  catPillText:  { fontSize: 12, fontWeight: "700" },
   severityBadge: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
-  severityText: { color: "#fff", fontSize: 11, fontWeight: "800" },
+  severityText: { color: "#fff", fontSize: 12, fontWeight: "800" },
   reportContent: { fontSize: 13, color: "#555", lineHeight: 19, marginBottom: 8 },
   reportMeta: { flexDirection: "row", justifyContent: "space-between" },
-  metaText: { fontSize: 11, color: "#999" },
+  metaText: { fontSize: 12, color: "#555" },
   recoveryPreview: { flexDirection: "row", marginTop: 8, backgroundColor: "#e8f0fe", borderRadius: 8, padding: 7 },
-  recoveryTitle: { fontSize: 11, fontWeight: "800", color: "#1a73e8" },
-  recoverySnippet: { fontSize: 11, color: "#1a73e8", flex: 1 },
-  tapHint: { fontSize: 10, color: "#bbb", marginTop: 8, textAlign: "right" },
+  recoveryTitle: { fontSize: 12, fontWeight: "800", color: "#1a73e8" },
+  recoverySnippet: { fontSize: 12, color: "#1a73e8", flex: 1 },
+  tapHint: { fontSize: 11, color: "#bbb", marginTop: 8, textAlign: "right" },
 
   emptyCard: { alignItems: "center", padding: 40 },
   emptyIcon: { fontSize: 48, marginBottom: 12 },
-  emptyText: { fontSize: 14, color: "#888", textAlign: "center", lineHeight: 21 },
+  emptyText: { fontSize: 14, color: "#444", textAlign: "center", lineHeight: 21 },
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
@@ -483,13 +483,13 @@ const s = StyleSheet.create({
   },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
   modalTitle: { fontSize: 20, fontWeight: "800", color: "#1c1c1e" },
-  closeBtn: { fontSize: 20, color: "#888", fontWeight: "700" },
-  modalLabel: { fontSize: 11, fontWeight: "800", color: "#aaa", letterSpacing: 0.8, marginTop: 14, marginBottom: 3 },
+  closeBtn: { fontSize: 20, color: "#444", fontWeight: "700" },
+  modalLabel: { fontSize: 12, fontWeight: "800", color: "#333", letterSpacing: 0.8, marginTop: 14, marginBottom: 3 },
   modalValue: { fontSize: 14, fontWeight: "600", color: "#1c1c1e" },
   indRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: 6 },
   indDot: { width: 8, height: 8, borderRadius: 4, marginTop: 5, marginRight: 10 },
   indText: { fontSize: 13, color: "#333", flex: 1 },
   recRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: 8, backgroundColor: "#f4f6fb", borderRadius: 8, padding: 10 },
-  recNum: { width: 22, height: 22, borderRadius: 11, backgroundColor: "#1a73e8", color: "#fff", fontSize: 11, fontWeight: "800", textAlign: "center", lineHeight: 22, marginRight: 10 },
+  recNum: { width: 22, height: 22, borderRadius: 11, backgroundColor: "#1a73e8", color: "#fff", fontSize: 12, fontWeight: "800", textAlign: "center", lineHeight: 22, marginRight: 10 },
   recText: { fontSize: 13, fontWeight: "600", color: "#1c1c1e", flex: 1, lineHeight: 20 },
 });

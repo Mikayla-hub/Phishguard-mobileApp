@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
   iconCircle:       { width:80, height:80, borderRadius:40, backgroundColor:"#e8f0fe", justifyContent:"center", alignItems:"center", marginBottom:16 },
   iconEmoji:        { fontSize:36 },
   title:            { fontSize:26, fontWeight:"bold", color:"#333", marginBottom:8 },
-  subtitle:         { fontSize:14, color:"#666", textAlign:"center", lineHeight:22, marginBottom:28 },
+  subtitle:         { fontSize:14, color: "#333", textAlign:"center", lineHeight:22, marginBottom:28 },
   emailHighlight:   { color:"#1a73e8", fontWeight:"600" },
   formContainer:    { width:"100%", backgroundColor:"#fff", borderRadius:12, padding:20, elevation:4, shadowColor:"#000", shadowOffset:{width:0,height:2}, shadowOpacity:0.08, shadowRadius:4 },
   label:            { fontSize:14, fontWeight:"600", color:"#333", marginBottom:6 },
@@ -195,7 +195,7 @@ const styles = StyleSheet.create({
   checkText:        { fontSize:12 },
   resetButton:      { backgroundColor:"#1a73e8", padding:15, borderRadius:8, alignItems:"center", marginTop:24 },
   resetButtonText:  { color:"#fff", fontSize:17, fontWeight:"bold" },
-  resendNote:       { color:"#888", fontSize:13, marginTop:24, textAlign:"center" },
+  resendNote:       { color: "#444", fontSize:13, marginTop:24, textAlign:"center" },
   resendLink:       { color:"#1a73e8", fontWeight:"600" },
 });
 

@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
   iconCircle:   { width:80, height:80, borderRadius:40, backgroundColor:"#e8f0fe", justifyContent:"center", alignItems:"center", marginBottom:20 },
   iconEmoji:    { fontSize:36 },
   title:        { fontSize:26, fontWeight:"bold", color:"#333", marginBottom:10 },
-  subtitle:     { fontSize:14, color:"#666", textAlign:"center", lineHeight:22, marginBottom:30, paddingHorizontal:10 },
+  subtitle:     { fontSize:14, color: "#333", textAlign:"center", lineHeight:22, marginBottom:30, paddingHorizontal:10 },
   formContainer:{ width:"100%", backgroundColor:"#fff", borderRadius:12, padding:20, elevation:4, shadowColor:"#000", shadowOffset:{width:0,height:2}, shadowOpacity:0.08, shadowRadius:4 },
   label:        { fontSize:14, fontWeight:"600", color:"#333", marginBottom:6 },
   inputRow:     { flexDirection:"row", alignItems:"center", borderWidth:1, borderColor:"#ddd", borderRadius:8, backgroundColor:"#fafafa" },
@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
   fieldError:   { color:"#d93025", fontSize:12, marginTop:4 },
   sendButton:   { backgroundColor:"#1a73e8", padding:15, borderRadius:8, alignItems:"center", marginTop:20 },
   sendButtonText:{ color:"#fff", fontSize:17, fontWeight:"bold" },
-  note:         { color:"#888", fontSize:13, marginTop:24, textAlign:"center" },
+  note:         { color: "#444", fontSize:13, marginTop:24, textAlign:"center" },
   noteLink:     { color:"#1a73e8", fontWeight:"600" },
 });
 
