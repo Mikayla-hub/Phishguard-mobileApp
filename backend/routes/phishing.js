@@ -149,6 +149,8 @@ router.post('/analyze', authenticate, async (req, res) => {
     const database = db.getDb();
 
     let textToAnalyze = content;
+    let imageContentType = 'unknown';        // set by OCR classifier
+    let imageHasSensitiveRequest = false;    // set by OCR classifier
 
     // 1. If it's an image, perform OCR to extract text
     if (type === 'image') {
@@ -163,10 +165,52 @@ router.post('/analyze', authenticate, async (req, res) => {
       const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
       let extractedSuccessfully = false;
 
+      // Structured OCR prompt — asks for ALL text AND content type in one call
+      const ocrPrompt = `You are an expert OCR engine and content classifier.
+
+Your tasks:
+1. Extract EVERY piece of visible text from this image completely and accurately.
+   - Include headers, body text, bullet points, contact details (phone, email, address, website URLs), prices, slogans, small print — nothing should be left out.
+   - Preserve the natural reading order (top to bottom, left to right).
+   - Keep line breaks where text visually appears on separate lines.
+
+2. Classify the content type using one of these labels:
+   "email" | "chat_message" | "advertisement" | "social_media_post" | "website" | "document" | "unknown"
+   - Use "advertisement" for posters, flyers, banners, promotional material, business cards.
+   - Use "email" only if the image clearly shows an email client UI.
+
+3. Determine whether the content explicitly asks the recipient to provide passwords, PINs, banking credentials, or personal ID numbers (hasSensitiveRequest).
+
+Respond ONLY with valid JSON — no markdown fences, no explanation:
+{
+  "text": "<all extracted text>",
+  "contentType": "<label>",
+  "isMarketing": <true|false>,
+  "hasSensitiveRequest": <true|false>
+}
+
+If the image contains no text at all, set "text" to an empty string.`;
+
+      // Helper: parse OCR JSON response safely
+      function parseOcrJson(raw) {
+        try {
+          const clean = raw.replace(/```json|```/g, '').trim();
+          const parsed = JSON.parse(clean);
+          return {
+            text: (parsed.text || '').trim(),
+            contentType: (parsed.contentType || 'unknown').toLowerCase(),
+            isMarketing: !!parsed.isMarketing,
+            hasSensitiveRequest: !!parsed.hasSensitiveRequest,
+          };
+        } catch {
+          // If AI didn't return JSON, treat the whole response as raw text
+          return { text: raw.trim(), contentType: 'unknown', isMarketing: false, hasSensitiveRequest: false };
+        }
+      }
+
       // ATTEMPT 1-3: Multi-model Gemini Vision fallback chain
       if (geminiKey) {
         const axios = require('axios');
-        const ocrPrompt = "You are an OCR engine. Extract all the text exactly as it appears in this image. Do not add any formatting, commentary, or markdown blocks. Just return the raw text.";
         const ocrBody = {
           contents: [{
             parts: [
@@ -191,11 +235,14 @@ router.post('/analyze', authenticate, async (req, res) => {
               ocrBody,
               { timeout: 30000 }
             );
-            const extracted = response.data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-            if (extracted) {
-              textToAnalyze = extracted;
-              extractedSuccessfully = true;
-              console.log(`✅ Gemini Vision OCR success via ${model}!`);
+            const raw = response.data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+            if (raw) {
+              const parsed = parseOcrJson(raw);
+              textToAnalyze             = parsed.text;
+              imageContentType          = parsed.isMarketing ? 'advertisement' : parsed.contentType;
+              imageHasSensitiveRequest  = parsed.hasSensitiveRequest;
+              extractedSuccessfully     = true;
+              console.log(`✅ Gemini Vision OCR success via ${model}! ContentType: ${imageContentType}, SensitiveRequest: ${imageHasSensitiveRequest}`);
             }
           } catch (err) {
             const status = err?.response?.status;
@@ -214,7 +261,7 @@ router.post('/analyze', authenticate, async (req, res) => {
         }
       }
 
-      // ATTEMPT 4: Groq Llama 4 Vision (free, uses existing GROQ_API_KEY)
+      // ATTEMPT 4: Groq Llama 4 Vision
       if (!extractedSuccessfully) {
         const groqKey = (process.env.GROQ_API_KEY || '').trim();
         if (groqKey) {
@@ -228,14 +275,8 @@ router.post('/analyze', authenticate, async (req, res) => {
                 messages: [{
                   role: 'user',
                   content: [
-                    {
-                      type: 'text',
-                      text: 'You are an OCR engine. Extract all the text exactly as it appears in this image. Do not add any formatting, commentary, or markdown blocks. Just return the raw text.'
-                    },
-                    {
-                      type: 'image_url',
-                      image_url: { url: `data:${mimeType};base64,${base64Raw}` }
-                    }
+                    { type: 'text', text: ocrPrompt },
+                    { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Raw}` } }
                   ]
                 }],
                 temperature: 0,
@@ -246,11 +287,14 @@ router.post('/analyze', authenticate, async (req, res) => {
                 timeout: 30000,
               }
             );
-            const extracted = groqResponse.data.choices[0].message.content.trim();
-            if (extracted) {
-              textToAnalyze = extracted;
-              extractedSuccessfully = true;
-              console.log('✅ Groq Vision OCR success!');
+            const raw = groqResponse.data.choices[0].message.content.trim();
+            if (raw) {
+              const parsed = parseOcrJson(raw);
+              textToAnalyze             = parsed.text;
+              imageContentType          = parsed.isMarketing ? 'advertisement' : parsed.contentType;
+              imageHasSensitiveRequest  = parsed.hasSensitiveRequest;
+              extractedSuccessfully     = true;
+              console.log(`✅ Groq Vision OCR success! ContentType: ${imageContentType}, SensitiveRequest: ${imageHasSensitiveRequest}`);
             }
           } catch (groqErr) {
             const status = groqErr?.response?.status;
@@ -292,9 +336,68 @@ router.post('/analyze', authenticate, async (req, res) => {
       }
       
       console.log(`📝 Extracted Text Preview: ${textToAnalyze.substring(0, 100).replace(/\n/g, ' ')}...`);
-      
+
       if (!textToAnalyze) {
         return res.status(400).json({ error: 'Could not extract any text from the image. Please try a clearer screenshot.' });
+      }
+
+      // Detect when OCR/Vision AI reports no text instead of extracting content.
+      // Groq/Gemini Vision returns natural-language responses like
+      // "There is no text in this image." — intercept before the ML model runs.
+      const NO_TEXT_PATTERNS = [
+        /there is no text in this image/i,
+        /no text (found|detected|visible|present)/i,
+        /this image (does not|doesn't) contain (any )?text/i,
+        /no readable text/i,
+        /image (appears to be|is) (blank|empty|graphical?|a photo)/i,
+        /cannot (find|detect|extract) (any )?text/i,
+        /i (could not|can'?t|was unable to) (find|detect|extract|identify) (any )?text/i,
+        /does not appear to (have|contain) (any )?text/i,
+        /no (text|words|characters) (are |is )?(visible|present|found|detected)/i,
+        /appears? to be (a )?photograph/i,
+        /this (looks like|is) (a |an )?(image|photo|picture)/i,
+      ];
+
+      const trimmed = textToAnalyze.trim();
+      // Also catch very short responses that can't be meaningful content (<20 chars
+      // of actual word characters — e.g. "No text." or "N/A")
+      const meaningfulChars = trimmed.replace(/[^a-zA-Z0-9]/g, '');
+      const isNoTextResponse =
+        NO_TEXT_PATTERNS.some(re => re.test(trimmed)) ||
+        meaningfulChars.length < 20;
+
+      if (isNoTextResponse) {
+        console.warn('⚠️  OCR returned a "no text" response — skipping ML analysis.');
+        const noTextAnalysis = {
+          riskScore: 0,
+          riskLevel: 'low',
+          confidence: 1,
+          indicators: [
+            '🖼️ No readable text was found in this image',
+            '📋 The image appears to contain no text — only graphics, photos, or blank space',
+            '✅ Without text content there are no phishing indicators to evaluate',
+          ],
+          recommendations: [
+            '✅ No phishing threat detected — the image contains no readable text. ' +
+            'If you expected text, try a clearer or higher-resolution screenshot.',
+          ],
+          modelVersion: 'no-text-bypass',
+        };
+
+        // Still log to history
+        const recordId = uuidv4();
+        await database.ref('analysis_history').child(recordId).set({
+          id: recordId,
+          inputType: 'image',
+          inputContent: '[Screenshot — No Text Found]',
+          riskScore: 0,
+          riskLevel: 'low',
+          indicators: noTextAnalysis.indicators,
+          recommendations: noTextAnalysis.recommendations,
+          createdAt: new Date().toISOString(),
+        });
+
+        return res.json({ analysis: noTextAnalysis });
       }
     }
 
@@ -313,12 +416,10 @@ router.post('/analyze', authenticate, async (req, res) => {
 
     try {
       if (isUrl) {
-        // URL analysis with reputation checks
         console.log('🔗 Analyzing as URL...');
         const urlAnalysis = await mlBridge.analyzeUrl(textToAnalyze);
         analysis = formatAnalysisResponse(urlAnalysis, 'url');
       } else {
-        // Email analysis with sender/subject context
         console.log('📧 Analyzing as email...');
         const emailAnalysis = await mlBridge.analyzeEmail(
           textToAnalyze,
@@ -328,8 +429,81 @@ router.post('/analyze', authenticate, async (req, res) => {
         analysis = formatAnalysisResponse(emailAnalysis, 'email');
       }
 
-      if (!analysis) {
-        throw new Error('Invalid analysis response from ML server');
+      if (!analysis) throw new Error('Invalid analysis response from ML server');
+
+      // ── Post-process: context-aware filtering for image analysis ──
+      if (type === 'image' && imageContentType === 'advertisement') {
+
+        // Scareware / tech-support scam patterns: these LOOK like ads but ARE phishing.
+        // If any match, skip the bypass entirely and let the ML score stand.
+        const SCAREWARE_PATTERNS = [
+          /\d+\s*(viruses?|threats?|malware|infections?)\s*(found|detected|identified)/i,
+          /your (iphone|android|phone|device|computer|mac|pc)\s*(was|has been|is)\s*(hacked|infected|compromised|at risk)/i,
+          /click (here|now|immediately|below) to (remove|clean|fix|protect|update|scan)/i,
+          /(call|contact)\s*(apple|microsoft|google|support|tech support)\s*(now|immediately)/i,
+          /your (apple id|account|password|id)\s*(has been|was|is)\s*(compromised|hacked|stolen|locked)/i,
+          /(warning|alert|critical|urgent)[^\n]{0,40}(virus|threat|hack|malware|compromised)/i,
+          /act (now|immediately|fast)/i,
+          /limited time.{0,20}(offer|deal|click)/i,
+        ];
+
+        const isScareware = SCAREWARE_PATTERNS.some(re => re.test(textToAnalyze));
+
+        if (isScareware) {
+          // Scareware masquerading as an ad — escalate, do NOT soften
+          console.warn('🚨 Scareware / tech-support scam patterns detected inside advertisement image — bypassing ad leniency.');
+          analysis.indicators = [
+            '🚨 Fake security alert / scareware content detected',
+            '🚨 Claims of viruses or device compromise are a classic phishing tactic',
+            ...( analysis.indicators || []).filter(i => !/no (readable|major)/i.test(i)),
+          ];
+          // Ensure risk reflects the threat
+          analysis.riskScore = Math.max(analysis.riskScore, 0.75);
+          analysis.riskLevel = 'high';
+          analysis.recommendations = [
+            '🚨 This is likely a SCAREWARE or TECH-SUPPORT SCAM. Do NOT click any links, call any numbers, or install any software shown in this image.',
+          ];
+
+        } else if (imageHasSensitiveRequest) {
+          // AI flagged that this ad asks for credentials/personal data — keep ML score
+          console.warn('⚠️  Advertisement requests sensitive information — keeping ML risk score.');
+          analysis.indicators = [
+            '⚠️  This appears to be an advertisement, but it requests personal or sensitive information',
+            ...(analysis.indicators || []),
+          ];
+
+        } else {
+          // Genuinely benign marketing (business flyer, product poster, etc.)
+          console.log('📢 Benign advertising content — filtering false-positive indicators.');
+
+          const FALSE_POSITIVE_PATTERNS = [
+            /requests sensitive information/i,
+            /credential request/i,
+            /requests? (personal|sensitive)/i,
+            /embedded (login )?form/i,
+            /broken (english|grammar)/i,
+            /poor grammar/i,
+            /urgency language/i,
+            /pressure.{0,30}language/i,
+          ];
+
+          const filteredIndicators = (analysis.indicators || []).filter(
+            ind => !FALSE_POSITIVE_PATTERNS.some(re => re.test(ind))
+          );
+          filteredIndicators.unshift('📢 Content identified as advertising/marketing material');
+
+          const genuineThreats = filteredIndicators.filter(ind => /🚨/.test(ind));
+          if (genuineThreats.length === 0) {
+            analysis.riskScore = Math.min(analysis.riskScore, 0.25);
+            analysis.riskLevel = 'low';
+            analysis.recommendations = [
+              '✅ This appears to be legitimate advertising content. No phishing-specific patterns detected.',
+            ];
+          }
+
+          analysis.indicators = filteredIndicators;
+          analysis.imageContentType = 'advertisement';
+        }
       }
 
       console.log(`✅ Analysis complete: ${analysis.riskLevel} (${(analysis.riskScore*100).toFixed(1)}% phishing probability)`);

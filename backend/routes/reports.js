@@ -1,6 +1,7 @@
 /**
  * Report Phishing Routes
  * Handles user submissions of suspicious emails and links
+ * Analysis powered by the ML Python ensemble bridge (consistent with /api/phishing/analyze)
  */
 
 const express = require('express');
@@ -9,7 +10,84 @@ const { v4: uuidv4 } = require('uuid');
 const { body, validationResult } = require('express-validator');
 const db = require('../config/database');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const phishingAnalyzer = require('../services/phishingAnalyzer');
+const MLPythonBridge = require('../services/mlPythonBridge');
+
+// Shared ML bridge instance (same Python ensemble server used by phishing.js)
+const mlBridge = new MLPythonBridge('http://localhost:5000');
+
+/**
+ * Convert the raw ML server response into the flat analysis shape
+ * expected by the rest of this router. Mirrors phishing.js formatAnalysisResponse.
+ */
+function formatAnalysisResponse(mlResponse, contentType) {
+  if (!mlResponse || !mlResponse.analysis) return null;
+
+  const analysisData  = mlResponse.analysis;
+  const phishingProb  = analysisData.phishing_probability || 0.5;
+  const confidence    = analysisData.confidence || 0;
+  const riskLevel     = analysisData.risk_level || 'UNCERTAIN';
+  const recommendation = analysisData.recommendation || 'Manual review required';
+
+  const indicators = [];
+
+  if (contentType === 'email' && mlResponse.features_detected) {
+    const f = mlResponse.features_detected;
+    if (f.urgency_indicators?.has_urgency)
+      indicators.push(`⚠️  Urgency language detected (${f.urgency_indicators.urgency_word_count} keywords)`);
+    if (f.sender_indicators?.is_generic)
+      indicators.push('⚠️  Generic sender name (e.g., "Admin", "Support")');
+    if (f.sender_indicators?.suspicious_domain)
+      indicators.push('🚨 Sender domain is suspicious or uses URL shortener');
+    if (f.url_indicators?.has_ip_url)
+      indicators.push('🚨 Contains direct IP address URL (common in phishing)');
+    if (f.url_indicators?.shortened_urls > 0)
+      indicators.push(`⚠️  Contains ${f.url_indicators.shortened_urls} shortened URL(s)`);
+    if (f.content_indicators?.requests_personal_info > 0)
+      indicators.push(`🚨 Requests sensitive information (${f.content_indicators.requests_personal_info} fields)`);
+    if (f.content_indicators?.has_forms)
+      indicators.push('🚨 Contains embedded forms to collect data');
+    if (f.content_indicators?.broken_grammar)
+      indicators.push('⚠️  Contains broken English or poor grammar');
+    if (f.content_indicators?.uses_authority_tactic)
+      indicators.push('⚠️  Impersonates known authority (bank, service provider, etc.)');
+  } else if (contentType === 'url' && mlResponse.structural_features) {
+    const f = mlResponse.structural_features;
+    if (f.is_ip_address)   indicators.push('🚨 URL is a direct IP address (very suspicious)');
+    if (f.has_at_symbol)   indicators.push('🚨 URL contains @ symbol (can hide real domain)');
+    if (f.long_url)        indicators.push('⚠️  Unusually long URL');
+    if (f.deep_subdomain)  indicators.push('⚠️  Multiple subdomains (may hide real domain)');
+    if (f.uses_http)       indicators.push('⚠️  Uses plain HTTP (not encrypted)');
+    if (f.new_tld)         indicators.push('⚠️  Uses suspicious TLD (.tk, .ml, .ga, etc.)');
+    if (f.looks_like_typo) indicators.push('🚨 Domain looks like a common typo (e.g., "amaz0n")');
+    if (mlResponse.reputation?.urlhaus_blacklisted)
+      indicators.push(`🚨 Blacklisted on URLhaus (threat: ${mlResponse.reputation.urlhaus_threat})`);
+  }
+
+  if (confidence < 0.2)
+    indicators.push('⚠️  Low confidence — manual review recommended');
+  if (indicators.length === 0)
+    indicators.push('No major phishing indicators detected');
+
+  // Normalise risk level to lowercase (matches existing DB records)
+  const mappedRiskLevel = {
+    CRITICAL:  'critical',
+    HIGH:      'high',
+    MEDIUM:    'medium',
+    LOW:       'low',
+    UNCERTAIN: 'uncertain'
+  }[riskLevel] || 'low';
+
+  return {
+    riskScore:       phishingProb,
+    riskLevel:       mappedRiskLevel,
+    confidence,
+    indicators,
+    recommendations: [recommendation],
+    modelVersion:    analysisData.model_version || 'ensemble-v2',
+    topRisks:        mlResponse.top_risks || [],
+    timestamp:       mlResponse.timestamp
+  };
+}
 
 /**
  * POST /api/reports
@@ -32,18 +110,35 @@ router.post('/', authenticate, [
     const { reportType, content, url, senderEmail, subject, aiCategoryId, severity } = req.body;
     const database = db.getDb();
 
-    // Automatically analyze the report content
+    // Analyze with the same Python ML ensemble used by /api/phishing/analyze
     let analysis;
-    if (reportType === 'url' && url) {
-      analysis = phishingAnalyzer.analyzeUrl(url);
-    } else if (reportType === 'email') {
-      analysis = phishingAnalyzer.analyzeEmail({ 
-        subject, 
-        body: content, 
-        sender: senderEmail 
-      });
-    } else {
-      analysis = phishingAnalyzer.analyzeContent(content);
+    try {
+      let mlResponse;
+      if (reportType === 'url' && url) {
+        mlResponse = await mlBridge.analyzeUrl(url);
+        analysis   = formatAnalysisResponse(mlResponse, 'url');
+      } else if (reportType === 'email') {
+        mlResponse = await mlBridge.analyzeEmail(content, senderEmail || '', subject || '');
+        analysis   = formatAnalysisResponse(mlResponse, 'email');
+      } else {
+        // sms / other — use email model as best fallback
+        mlResponse = await mlBridge.analyzeEmail(content, '', '');
+        analysis   = formatAnalysisResponse(mlResponse, 'email');
+      }
+    } catch (mlErr) {
+      console.warn('⚠️  ML bridge failed for report analysis, using safe defaults:', mlErr.message);
+    }
+
+    // Hard fallback if ML server is unavailable
+    if (!analysis) {
+      analysis = {
+        riskScore:       0.5,
+        riskLevel:       'uncertain',
+        confidence:      0,
+        indicators:      ['Analysis service temporarily unavailable. Manual review recommended.'],
+        recommendations: ['Verify this content through official channels before taking action.'],
+        modelVersion:    'fallback'
+      };
     }
 
     // Create report

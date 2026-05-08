@@ -16,12 +16,14 @@ import {
 } from "react-native";
 import { analyzePhishing, generateIncidentPlan } from "../services/api";
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 
 const PhishingAnalyzerScreen = ({ navigation }) => {
   const [inputText, setInputText] = useState("");
   const [senderEmail, setSenderEmail] = useState("");
   const [analysisType, setAnalysisType] = useState("url");
   const [imageUri, setImageUri] = useState(null);
+  const [imageError, setImageError] = useState(null); // null | 'no_text' | 'ocr_failed'
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
   const [results, setResults] = useState(null);
@@ -68,14 +70,34 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: false, // Disabled to prevent forced square cropping of vertical screenshots
-      quality: 0.8,
-      base64: true,
+      allowsEditing: false,  // Disabled to prevent forced square cropping on iOS
+      quality: 1,
+      base64: false, // Don't get base64 yet, we'll get it after resizing
     });
 
     if (!result.canceled && result.assets && result.assets.length > 0) {
-      setImageUri(result.assets[0].uri);
-      setInputText(result.assets[0].base64); // Store base64 to send to backend
+      const originalUri = result.assets[0].uri;
+      const width = result.assets[0].width;
+
+      try {
+        // Resize image if it's too large to prevent huge base64 payloads
+        // but keep aspect ratio so no content is lost
+        const resizeAction = width > 1080 ? [{ resize: { width: 1080 } }] : [];
+        
+        const manipResult = await ImageManipulator.manipulateAsync(
+          originalUri,
+          resizeAction,
+          { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+        );
+
+        setImageUri(manipResult.uri);
+        setInputText(manipResult.base64);
+        setImageError(null);
+        setResults(null);
+      } catch (err) {
+        console.error("Failed to process image:", err);
+        Alert.alert("Image Error", "Failed to process the selected image.");
+      }
     }
   };
 
@@ -84,6 +106,7 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
 
     setIsAnalyzing(true);
     setResults(null);
+    setImageError(null);
     startScanAnimation();
 
     try {
@@ -119,6 +142,9 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
         riskColor: color,
         detectedIndicators,
         recommendation,
+        noText: analysis.modelVersion === 'no-text-bypass' ||
+                (analysisType === 'image' && riskScorePercent === 0 &&
+                 detectedIndicators.some(i => /no (readable )?text/i.test(i))),
         analyzedText:
           analysisType === 'image' ? "Screenshot Analysis" : inputText.substring(0, 100) + (inputText.length > 100 ? "..." : ""),
       };
@@ -130,11 +156,22 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
       console.error("-> Message:", error?.message);
       console.error("-> Status Code:", error?.status);
       console.error("-> Backend Data:", JSON.stringify(error?.data, null, 2));
-      console.error("-> Full Error:", error);
-      Alert.alert(
-        "Analysis failed",
-        error?.message || "Unable to analyze content. Please try again."
-      );
+
+      // Show a friendly in-screen error for image-specific failures
+      const msg = error?.message || "";
+      if (
+        analysisType === "image" &&
+        (msg.toLowerCase().includes("no text") ||
+          msg.toLowerCase().includes("could not extract") ||
+          error?.status === 400)
+      ) {
+        setImageError("no_text");
+      } else {
+        Alert.alert(
+          "Analysis failed",
+          msg || "Unable to analyze content. Please try again."
+        );
+      }
     } finally {
       setIsAnalyzing(false);
       stopScanAnimation();
@@ -146,6 +183,7 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
     setSenderEmail("");
     setImageUri(null);
     setResults(null);
+    setImageError(null);
   };
 
   const handleGeneratePlan = async () => {
@@ -242,7 +280,14 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
             {analysisType === "image" ? (
               <View style={styles.imageUploadContainer}>
                 {imageUri ? (
-                  <Image source={{ uri: imageUri }} style={styles.previewImage} />
+                  <ScrollView
+                    maximumZoomScale={3}
+                    minimumZoomScale={1}
+                    contentContainerStyle={styles.previewImageZoomContainer}
+                    style={styles.previewImageScrollView}
+                  >
+                    <Image source={{ uri: imageUri }} style={styles.previewImage} />
+                  </ScrollView>
                 ) : (
                   <TouchableOpacity style={styles.uploadPlaceholder} onPress={pickImage}>
                     <Text style={styles.uploadIcon}>📸</Text>
@@ -312,6 +357,27 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
             </View>
           </View>
 
+          {/* No-text image error card */}
+          {imageError === "no_text" && !isAnalyzing && (
+            <View style={styles.noTextCard}>
+              <Text style={styles.noTextIcon}>🖼️</Text>
+              <Text style={styles.noTextTitle}>No Text Found in Image</Text>
+              <Text style={styles.noTextBody}>
+                Our OCR engine could not extract any readable text from this screenshot.
+                This can happen with blurry images, images with only graphics, or very
+                low contrast.
+              </Text>
+              <View style={styles.noTextTips}>
+                <Text style={styles.noTextTip}>📸  Use a high-quality, unedited screenshot</Text>
+                <Text style={styles.noTextTip}>🔍  Make sure text is clearly visible</Text>
+                <Text style={styles.noTextTip}>✂️  Crop out UI chrome (status bar, nav buttons)</Text>
+              </View>
+              <TouchableOpacity style={styles.noTextRetryBtn} onPress={pickImage}>
+                <Text style={styles.noTextRetryText}>Choose a Different Image</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Scanning Animation */}
           {isAnalyzing && (
             <View style={styles.scanningContainer}>
@@ -327,7 +393,9 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
                 ]}
               />
               <ActivityIndicator size="large" color="#1a73e8" />
-              <Text style={styles.scanningText}>AI analyzing content...</Text>
+              <Text style={styles.scanningText}>
+                {analysisType === "image" ? "Extracting text from screenshot..." : "AI analyzing content..."}
+              </Text>
               <Text style={styles.scanningSubtext}>Checking against known phishing patterns</Text>
             </View>
           )}
@@ -335,85 +403,116 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
           {/* Results */}
           {results && (
             <View style={styles.resultsContainer}>
-              {/* Risk Score Card */}
-              <View style={[styles.riskCard, { borderLeftColor: results.riskColor }]}>
-                <View style={styles.riskHeader}>
-                  <View style={[styles.riskBadge, { backgroundColor: results.riskColor }]}>
-                    <Text style={styles.riskBadgeText}>{results.riskLevel}</Text>
-                  </View>
-                  <View style={styles.scoreContainer}>
-                    <Text style={[styles.scoreNumber, { color: results.riskColor }]}>
-                      {results.riskScore}
-                    </Text>
-                    <Text style={styles.scoreLabel}>Risk Score</Text>
-                  </View>
-                </View>
 
-                {/* Risk Meter */}
-                <View style={styles.riskMeter}>
-                  <View style={styles.riskMeterTrack}>
-                    <View
-                      style={[
-                        styles.riskMeterFill,
-                        {
-                          width: `${results.riskScore}%`,
-                          backgroundColor: results.riskColor,
-                        },
-                      ]}
-                    />
-                  </View>
-                  <View style={styles.riskMeterLabels}>
-                    <Text style={styles.riskMeterLabel}>Safe</Text>
-                    <Text style={styles.riskMeterLabel}>Suspicious</Text>
-                    <Text style={styles.riskMeterLabel}>Dangerous</Text>
-                  </View>
-                </View>
-              </View>
+              {/* ── No-text result card (image had no readable text) ── */}
+              {results.noText ? (
+                <View style={styles.noTextResultCard}>
+                  <Text style={styles.noTextResultIcon}>🖼️</Text>
+                  <Text style={styles.noTextResultTitle}>No Text Detected</Text>
+                  <Text style={styles.noTextResultSub}>
+                    This image does not contain readable text, so there are no phishing
+                    indicators to evaluate.
+                  </Text>
 
-              {/* Reasons / Detected Indicators */}
-              {results.detectedIndicators.length > 0 && (
-                <View style={styles.indicatorsCard}>
-                  <Text style={styles.indicatorsTitle}>🔍 Reasons for Risk Score</Text>
-                  {results.detectedIndicators.map((indicator, index) => (
-                    <View key={index} style={styles.indicatorItem}>
-                      <View style={[styles.indicatorDot, { backgroundColor: results.riskColor }]} />
-                      <Text style={styles.indicatorText}>{indicator}</Text>
+                  <View style={styles.noTextIndicatorList}>
+                    {results.detectedIndicators.map((ind, i) => (
+                      <View key={i} style={styles.noTextIndicatorRow}>
+                        <Text style={styles.noTextIndicatorText}>{ind}</Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  <View style={styles.noTextRecoBox}>
+                    <Text style={styles.noTextRecoText}>{results.recommendation}</Text>
+                  </View>
+
+                  <TouchableOpacity style={styles.noTextRetryBtn} onPress={pickImage}>
+                    <Text style={styles.noTextRetryText}>📸 Choose a Different Image</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  {/* Risk Score Card */}
+                  <View style={[styles.riskCard, { borderLeftColor: results.riskColor }]}>
+                    <View style={styles.riskHeader}>
+                      <View style={[styles.riskBadge, { backgroundColor: results.riskColor }]}>
+                        <Text style={styles.riskBadgeText}>{results.riskLevel}</Text>
+                      </View>
+                      <View style={styles.scoreContainer}>
+                        <Text style={[styles.scoreNumber, { color: results.riskColor }]}>
+                          {results.riskScore}
+                        </Text>
+                        <Text style={styles.scoreLabel}>Risk Score</Text>
+                      </View>
                     </View>
-                  ))}
-                </View>
-              )}
 
-              {/* Recommendation */}
-              <View style={styles.recommendationCard}>
-                <Text style={styles.recommendationTitle}>💡 Recommendation</Text>
-                <Text style={styles.recommendationText}>{results.recommendation}</Text>
-              </View>
+                    {/* Risk Meter */}
+                    <View style={styles.riskMeter}>
+                      <View style={styles.riskMeterTrack}>
+                        <View
+                          style={[
+                            styles.riskMeterFill,
+                            {
+                              width: `${results.riskScore}%`,
+                              backgroundColor: results.riskColor,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <View style={styles.riskMeterLabels}>
+                        <Text style={styles.riskMeterLabel}>Safe</Text>
+                        <Text style={styles.riskMeterLabel}>Suspicious</Text>
+                        <Text style={styles.riskMeterLabel}>Dangerous</Text>
+                      </View>
+                    </View>
+                  </View>
 
-              {/* Action Buttons */}
-              <View style={styles.actionButtons}>
-                <TouchableOpacity
-                  style={styles.reportButton}
-                  onPress={() => navigation.navigate("ReportPhishingScreen", {
-                    prefilledContent: inputText,
-                    analysisResults:  results,
-                    reportType: analysisType === "image" ? "other" : analysisType,
-                    senderEmail: senderEmail || undefined,
-                  })}
-                >
-                  <Text style={styles.reportButtonText}>🚨 Report This</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.learnButton, isGeneratingPlan && { backgroundcolor: "#444" }]}
-                  onPress={handleGeneratePlan}
-                  disabled={isGeneratingPlan}
-                >
-                  {isGeneratingPlan ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <Text style={styles.learnButtonText}>🛡️ Get Response Plan</Text>
+                  {/* Reasons / Detected Indicators */}
+                  {results.detectedIndicators.length > 0 && (
+                    <View style={styles.indicatorsCard}>
+                      <Text style={styles.indicatorsTitle}>🔍 Reasons for Risk Score</Text>
+                      {results.detectedIndicators.map((indicator, index) => (
+                        <View key={index} style={styles.indicatorItem}>
+                          <View style={[styles.indicatorDot, { backgroundColor: results.riskColor }]} />
+                          <Text style={styles.indicatorText}>{indicator}</Text>
+                        </View>
+                      ))}
+                    </View>
                   )}
-                </TouchableOpacity>
-              </View>
+
+                  {/* Recommendation */}
+                  <View style={styles.recommendationCard}>
+                    <Text style={styles.recommendationTitle}>💡 Recommendation</Text>
+                    <Text style={styles.recommendationText}>{results.recommendation}</Text>
+                  </View>
+
+                  {/* Action Buttons */}
+                  <View style={styles.actionButtons}>
+                    <TouchableOpacity
+                      style={styles.reportButton}
+                      onPress={() => navigation.navigate("ReportPhishingScreen", {
+                        prefilledContent: inputText,
+                        analysisResults:  results,
+                        reportType: analysisType === "image" ? "other" : analysisType,
+                        senderEmail: senderEmail || undefined,
+                      })}
+                    >
+                      <Text style={styles.reportButtonText}>🚨 Report This</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.learnButton, isGeneratingPlan && { backgroundcolor: "#444" }]}
+                      onPress={handleGeneratePlan}
+                      disabled={isGeneratingPlan}
+                    >
+                      {isGeneratingPlan ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                      ) : (
+                        <Text style={styles.learnButtonText}>🛡️ Get Response Plan</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
             </View>
           )}
 
@@ -593,10 +692,20 @@ const styles = StyleSheet.create({
     color: '#333',
     fontSize: 14,
   },
+  previewImageScrollView: {
+    width: '100%',
+    height: 300, // Taller to accommodate uncropped screenshots
+    borderRadius: 10,
+    backgroundColor: '#000', // Dark background looks better for mixed aspect ratios
+  },
+  previewImageZoomContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   previewImage: {
     width: '100%',
-    height: 200,
-    borderRadius: 10,
+    height: '100%',
     resizeMode: 'contain',
   },
   changeImageButton: {
@@ -797,6 +906,128 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     fontSize: 14,
   },
+  // No-text image error card
+  noTextCard: {
+    backgroundColor: "#fff8e1",
+    borderRadius: 14,
+    padding: 22,
+    marginBottom: 20,
+    borderWidth: 1.5,
+    borderColor: "#f9ab00",
+    alignItems: "center",
+  },
+  noTextIcon: {
+    fontSize: 44,
+    marginBottom: 10,
+  },
+  noTextTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#5f4b00",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  noTextBody: {
+    fontSize: 13,
+    color: "#7a5c00",
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 14,
+  },
+  noTextTips: {
+    alignSelf: "stretch",
+    backgroundColor: "#fff3cd",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+  },
+  noTextTip: {
+    fontSize: 13,
+    color: "#5f4b00",
+    fontWeight: "600",
+    marginBottom: 6,
+    lineHeight: 20,
+  },
+  noTextRetryBtn: {
+    backgroundColor: "#f9ab00",
+    paddingVertical: 11,
+    paddingHorizontal: 28,
+    borderRadius: 10,
+  },
+  noTextRetryText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 14,
+  },
+
+  // No-text RESULT card (shown after analysis returns no-text-bypass)
+  noTextResultCard: {
+    backgroundColor: "#f0fdf4",
+    borderRadius: 16,
+    padding: 22,
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: "#34a853",
+    alignItems: "center",
+    elevation: 2,
+    shadowColor: "#34a853",
+    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 8,
+  },
+  noTextResultIcon: {
+    fontSize: 48,
+    marginBottom: 10,
+  },
+  noTextResultTitle: {
+    fontSize: 19,
+    fontWeight: "800",
+    color: "#1b5e20",
+    marginBottom: 6,
+    textAlign: "center",
+  },
+  noTextResultSub: {
+    fontSize: 13,
+    color: "#2e7d32",
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  noTextIndicatorList: {
+    alignSelf: "stretch",
+    backgroundColor: "#e6f4ea",
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 14,
+  },
+  noTextIndicatorRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 8,
+  },
+  noTextIndicatorText: {
+    fontSize: 13,
+    color: "#1b5e20",
+    fontWeight: "600",
+    flex: 1,
+    lineHeight: 20,
+  },
+  noTextRecoBox: {
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+    alignSelf: "stretch",
+    borderLeftWidth: 4,
+    borderLeftColor: "#34a853",
+  },
+  noTextRecoText: {
+    fontSize: 13,
+    color: "#2e7d32",
+    fontWeight: "600",
+    lineHeight: 20,
+  },
+
   tipsSection: {
     marginBottom: 20,
   },
