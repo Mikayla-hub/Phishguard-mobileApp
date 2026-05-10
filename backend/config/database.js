@@ -12,15 +12,28 @@ let db = null;
  */
 async function initialize() {
   try {
-    const serviceAccount = require('./firebase-service-account.json');
+    let serviceAccount;
     
+    // First, try to load from environment variable (used on Render)
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+      try {
+        serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      } catch (parseError) {
+        console.error('Failed to parse FIREBASE_SERVICE_ACCOUNT env var. Ensure it is valid JSON.');
+        throw parseError;
+      }
+    } else {
+      // Fallback: try loading the local file
+      serviceAccount = require('./firebase-service-account.json');
+    }
+
     if (!admin.apps.length) {
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
         databaseURL: process.env.FIREBASE_DATABASE_URL || `https://${serviceAccount.project_id}-default-rtdb.firebaseio.com`
       });
     }
-    
+
     db = admin.database();
     console.log('🔥 Firebase Realtime Database initialized successfully');
     return db;
