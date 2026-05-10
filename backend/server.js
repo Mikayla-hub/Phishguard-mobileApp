@@ -68,7 +68,8 @@ app.use((req, res, next) => {
 // Health check endpoint (with ML server status)
 app.get('/api/health', async (req, res) => {
   const MLPythonBridge = require('./services/mlPythonBridge');
-  const mlBridge = new MLPythonBridge('http://localhost:5000');
+  const mlUrl = process.env.ML_SERVER_URL || 'http://localhost:5000';
+  const mlBridge = new MLPythonBridge(mlUrl);
   
   const mlConnected = await mlBridge.healthCheck().catch(() => false);
   

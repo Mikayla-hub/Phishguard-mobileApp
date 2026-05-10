@@ -13,7 +13,7 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 const MLPythonBridge = require('../services/mlPythonBridge');
 
 // Shared ML bridge instance (same Python ensemble server used by phishing.js)
-const mlBridge = new MLPythonBridge('http://localhost:5000');
+const mlBridge = new MLPythonBridge(process.env.ML_SERVER_URL || 'http://localhost:5000');
 
 /**
  * Convert the raw ML server response into the flat analysis shape

@@ -7,7 +7,7 @@ const Tesseract = require('tesseract.js');
 const { authenticate } = require('../middleware/auth');
 
 // Initialize ML Bridge to Python server
-const mlBridge = new MLPythonBridge('http://localhost:5000');
+const mlBridge = new MLPythonBridge(process.env.ML_SERVER_URL || 'http://localhost:5000');
 let mlBridgeReady = false;
 
 // Check ML server on startup

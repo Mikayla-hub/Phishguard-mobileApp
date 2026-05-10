@@ -448,9 +448,10 @@ if __name__ == '__main__':
    GET  /api/models/stats           - Model statistics
    GET  /api/health                 - Health check
 
-🌐 Server running at: http://localhost:5000
+🌐 Server running at: http://0.0.0.0:{port}
 
 Press Ctrl+C to stop
 """)
-    
-    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)

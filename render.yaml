@@ -1,0 +1,48 @@
+services:
+  # ── 1. Node.js Express API ──────────────────────────────────────────────────
+  - type: web
+    name: phishguard-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      # Paste the Python ML service URL here after it is deployed first
+      - key: ML_SERVER_URL
+        value: https://phishguard-ml.onrender.com
+      # Set the remaining secrets via Render dashboard Environment tab
+      - key: JWT_SECRET
+        sync: false
+      - key: FIREBASE_DATABASE_URL
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: CORS_ORIGIN
+        value: "*"
+
+  # ── 2. Python Flask ML Server ────────────────────────────────────────────────
+  - type: web
+    name: phishguard-ml
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r ml_requirements.txt
+    startCommand: python ml_server_enhanced.py
+    plan: free
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: FLASK_ENV
+        value: production
