@@ -13,7 +13,7 @@ let db = null;
 async function initialize() {
   try {
     let serviceAccount;
-    
+
     // First, try to load from environment variable (used on Render)
     if (process.env.FIREBASE_SERVICE_ACCOUNT) {
       try {
