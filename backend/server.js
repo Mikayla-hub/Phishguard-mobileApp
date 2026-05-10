@@ -37,6 +37,7 @@ function getLanIp() {
 const mlService = require('./services/mlService');
 
 const app = express();
+app.set('trust proxy', 1); // Required for Render and express-rate-limit
 const PORT = process.env.PORT || 3001;
 
 // Security middleware
