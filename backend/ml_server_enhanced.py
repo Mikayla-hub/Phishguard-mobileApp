@@ -437,6 +437,7 @@ if __name__ == '__main__':
     
     load_models()
     
+    port = int(os.environ.get('PORT', 5000))
     print(f"""
 🚀 Starting Flask server...
 
@@ -453,5 +454,4 @@ if __name__ == '__main__':
 Press Ctrl+C to stop
 """)
 
-    port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
