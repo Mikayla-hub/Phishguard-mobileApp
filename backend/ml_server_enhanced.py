@@ -264,7 +264,18 @@ def analyze_url():
         y_proba = model.predict_proba(X)[0]
         phishing_prob = float(y_proba[1])
         safe_prob = float(y_proba[0])
-        confidence = abs(phishing_prob - safe_prob)
+        
+        # TYPOSQUATTING BOOST: If typosquatting is detected, significantly increase phishing probability
+        if features.get('looks_like_typo', False):
+            # Boost phishing probability if typo detected
+            # If model is uncertain (prob between 0.3-0.7), move towards phishing
+            if phishing_prob < 0.7:
+                phishing_prob = min(0.95, phishing_prob + 0.3)  # Strong boost
+            # If model thinks it's safe, override with suspicious
+            if phishing_prob < 0.5:
+                phishing_prob = 0.75
+        
+        confidence = abs(phishing_prob - (1 - phishing_prob))
         risk_level = get_risk_level(phishing_prob, confidence)
         
         response = {

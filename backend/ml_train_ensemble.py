@@ -33,6 +33,14 @@ BASE_DIR = Path(__file__).resolve().parent
 DATASETS_DIR = BASE_DIR / "data" / "datasets"
 MODELS_DIR = BASE_DIR / "models"
 
+# Import typosquatting detection from feature extractor
+try:
+    from ml_feature_extractor import detect_typosquatting_url
+except ImportError:
+    # Fallback if not available
+    def detect_typosquatting_url(hostname):
+        return False
+
 def enrich_url(url):
     """Append structural signal tokens to URL"""
     tokens = [url]
@@ -41,6 +49,8 @@ def enrich_url(url):
         import re
         p = urlparse(url if '://' in url else 'http://' + url)
         host = p.hostname or ''
+        
+        # Structural features
         if re.match(r'^\d+\.\d+\.\d+\.\d+$', host):
             tokens.append('__FEAT_IP_ADDR__')
         if host.count('.') > 3:
@@ -55,6 +65,11 @@ def enrich_url(url):
             tokens.append('__FEAT_MANY_PARAMS__')
         if p.scheme == 'http' and any(k in url.lower() for k in ['login','account','verify','secure']):
             tokens.append('__FEAT_HTTP_SENSITIVE__')
+        
+        # Typosquatting detection - HIGH PRIORITY
+        if detect_typosquatting_url(host):
+            tokens.append('__FEAT_TYPO__')
+            tokens.append('__TYPO_BRAND__')  # Extra emphasis on typo
     except Exception:
         pass
     return ' '.join(tokens)

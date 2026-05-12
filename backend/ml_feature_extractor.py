@@ -10,6 +10,83 @@ import requests
 from functools import lru_cache
 
 
+def detect_typosquatting_url(hostname):
+    """Detect typosquatting patterns in URL hostname"""
+    if not hostname:
+        return False
+    
+    hostname_lower = hostname.lower().split('.')[0]  # Get just the domain name
+    
+    # Comprehensive brand dictionary with various typosquatting patterns
+    brands = {
+        'paypal': [
+            'paypa1', 'paypa|', 'paypai', 'paypa-l', 'pay-pal', 'paypall', 
+            'paypa', 'p4ypal', 'payp4l', 'paypàl', 'paypaI', 'p@ypal'
+        ],
+        'amazon': [
+            'amaz0n', 'amazo', 'amzon', 'amazon-', 'amazn', 'am4z0n',
+            'ama20n', 'am@zon', 'amazôn', 'amaz0'
+        ],
+        'google': [
+            'g00gle', 'gogle', 'googlе', 'googl', 'g0ogle', 'gооgle',
+            'go0gle', 'g@gle', 'goog1e'
+        ],
+        'apple': [
+            'app1e', 'appl', 'appel', 'app|e', 'apples', 'app1',
+            'a99le', 'àpple', 'app-le'
+        ],
+        'microsoft': [
+            'micros0ft', 'microso', 'microsft', 'micro$oft', 'mkrcsoft',
+            'microsoft-', 'm1cr050ft'
+        ],
+        'facebook': [
+            'faceb00k', 'facebookk', 'facbk', 'face600k', 'f4ceb00k',
+            'facebookl', 'facebook-'
+        ],
+        'instagram': [
+            'instag ram', 'instagra', 'insta-gram', 'insta9ram', 'inst4gr4m'
+        ],
+        'linkedin': [
+            'linkedln', 'linkdin', 'linkedin-', 'linkedin-com', 'linkedln-'
+        ],
+        'twitter': [
+            'twitt', 'twitter-', 'twiter', 'tw1tter', 'twiтter'
+        ],
+        'ebay': [
+            'ebay-', 'ebay1', 'eba7', 'ebay-com'
+        ],
+        'dropbox': [
+            'dropbo', 'dropbox-', 'dropbo-x', 'dr0pbox'
+        ],
+        'github': [
+            'githup', 'gitub', 'github-', 'gіthub'
+        ],
+        'stripe': [
+            'stripe-', 'str1pe', 'strlpe'
+        ],
+        'coinbase': [
+            'coinbase-', 'c01nbase'
+        ],
+        'twilio': [
+            'twilio-', 'tw1lio'
+        ]
+    }
+    
+    # Check for brand typos
+    for brand, typo_patterns in brands.items():
+        for pattern in typo_patterns:
+            if pattern in hostname_lower:
+                return True
+    
+    # Check for character substitutions
+    suspicious_chars = hostname_lower.replace('0', 'o').replace('1', 'l').replace('5', 's').replace('3', 'e')
+    for brand in brands.keys():
+        if brand in suspicious_chars and suspicious_chars != hostname_lower:
+            return True
+    
+    return False
+
+
 def enrich_url(url):
     """Append structural signal tokens to URL for TF-IDF feature extraction"""
     tokens = [url]
@@ -30,6 +107,10 @@ def enrich_url(url):
             tokens.append('__FEAT_MANY_PARAMS__')
         if p.scheme == 'http' and any(k in url.lower() for k in ['login','account','verify','secure']):
             tokens.append('__FEAT_HTTP_SENSITIVE__')
+        # Add typosquatting detection - HIGH PRIORITY
+        if detect_typosquatting_url(host):
+            tokens.append('__FEAT_TYPO__')
+            tokens.append('__TYPO_BRAND__')  # Extra emphasis
     except Exception:
         pass
     return ' '.join(tokens)
@@ -271,28 +352,66 @@ class URLFeatureExtractor:
         """Detect typosquatting and common brand impersonation patterns"""
         hostname_lower = hostname.lower().split('.')[0]  # Get just the domain name
         
-        # Exact patterns (numeric substitution)
-        exact_typos = [
-            'amaz0n', 'paypa1', 'g00gle', 'micros0ft', 'faceb00k', 'instag ram',
-            'app1e', 'linkedln', 'twitch', 'redd1t'
-        ]
-        if any(typo in hostname_lower for typo in exact_typos):
-            return True
-        
-        # Known brands to check
+        # Comprehensive brand dictionary with various typosquatting patterns
         brands = {
-            'paypal': ['paypa', 'paypa1', 'paypai', 'paypa-l', 'pay-pal', 'paypall'],
-            'amazon': ['amaz0n', 'amazo', 'amzon', 'amazon-', 'amazn'],
-            'google': ['g00gle', 'gogle', 'googlе', 'googl'],
-            'apple': ['app1e', 'appl', 'appel'],
-            'microsoft': ['micros0ft', 'microso', 'microsft'],
-            'facebook': ['faceb00k', 'facebookk', 'facbk'],
-            'instagram': ['instag ram', 'instagra', 'insta-gram'],
-            'linkedin': ['linkedln', 'linkdin', 'linkedin-'],
-            'twitter': ['twitt', 'twitter-'],
-            'ebay': ['ebay-', 'ebay1'],
-            'dropbox': ['dropbo', 'dropbox-'],
-            'github': ['githup', 'gitub', 'github-']
+            # PayPal variations: numeric substitution (1 for l), visual similarity
+            'paypal': [
+                'paypa1', 'paypa|', 'paypai', 'paypa-l', 'pay-pal', 'paypall', 
+                'paypa', 'p4ypal', 'payp4l', 'paypàl', 'paypaI', 'p@ypal'
+            ],
+            # Amazon variations
+            'amazon': [
+                'amaz0n', 'amazo', 'amzon', 'amazon-', 'amazn', 'am4z0n',
+                'ama20n', 'am@zon', 'amazôn', 'amaz0'
+            ],
+            # Google variations
+            'google': [
+                'g00gle', 'gogle', 'googlе', 'googl', 'g0ogle', 'gооgle',
+                'go0gle', 'g@gle', 'goog1e'
+            ],
+            # Apple variations
+            'apple': [
+                'app1e', 'appl', 'appel', 'app|e', 'apples', 'app1',
+                'a99le', 'àpple', 'app-le'
+            ],
+            # Microsoft variations
+            'microsoft': [
+                'micros0ft', 'microso', 'microsft', 'micro$oft', 'mkrcsoft',
+                'microsoft-', 'm1cr050ft'
+            ],
+            # Facebook variations
+            'facebook': [
+                'faceb00k', 'facebookk', 'facbk', 'face600k', 'f4ceb00k',
+                'facebookl', 'facebook-'
+            ],
+            # Other major platforms
+            'instagram': [
+                'instag ram', 'instagra', 'insta-gram', 'insta9ram', 'inst4gr4m'
+            ],
+            'linkedin': [
+                'linkedln', 'linkdin', 'linkedin-', 'linkedin-com', 'linkedln-'
+            ],
+            'twitter': [
+                'twitt', 'twitter-', 'twiter', 'tw1tter', 'twiтter'
+            ],
+            'ebay': [
+                'ebay-', 'ebay1', 'eba7', 'ebay-com'
+            ],
+            'dropbox': [
+                'dropbo', 'dropbox-', 'dropbo-x', 'dr0pbox'
+            ],
+            'github': [
+                'githup', 'gitub', 'github-', 'gіthub'
+            ],
+            'stripe': [
+                'stripe-', 'str1pe', 'strlpe'
+            ],
+            'coinbase': [
+                'coinbase-', 'c01nbase'
+            ],
+            'twilio': [
+                'twilio-', 'tw1lio'
+            ]
         }
         
         # Check for brand typos (case-insensitive)
@@ -301,21 +420,28 @@ class URLFeatureExtractor:
                 if pattern in hostname_lower:
                     return True
         
+        # Check for character substitutions in domain name
+        # Look for suspicious numeric/special char patterns near known brands
+        suspicious_chars = hostname_lower.replace('0', 'o').replace('1', 'l').replace('5', 's').replace('3', 'e')
+        for brand in brands.keys():
+            if brand in suspicious_chars and suspicious_chars != hostname_lower:
+                return True
+        
         # Check for known phishing TLDs combined with brand-like names
         phishing_indicators = [
             r'bank.*login',
             r'paypal.*verify',
             r'amazon.*account',
             r'apple.*id',
-            r'microsoft.*account'
+            r'microsoft.*account',
+            r'secure.*login',
+            r'verify.*account'
         ]
         for pattern in phishing_indicators:
             if re.search(pattern, hostname_lower):
                 return True
         
         return False
-        
-        return features
 
 
 class URLReputationChecker:
