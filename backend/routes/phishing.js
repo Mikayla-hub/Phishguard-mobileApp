@@ -199,10 +199,13 @@ Your tasks:
 
 3. Determine whether the content explicitly asks the recipient to provide passwords, PINs, banking credentials, or personal ID numbers (hasSensitiveRequest).
 
+4. If the image is an email or message, extract the exact sender email address (e.g. "no-reply@accounts.google.com"). If none is found, return null.
+
 Respond ONLY with valid JSON — no markdown fences, no explanation:
 {
   "text": "<all extracted text>",
   "contentType": "<label>",
+  "senderEmail": "<extracted email or null>",
   "isMarketing": <true|false>,
   "hasSensitiveRequest": <true|false>
 }
@@ -217,12 +220,13 @@ If the image contains no text at all, set "text" to an empty string.`;
           return {
             text: (parsed.text || '').trim(),
             contentType: (parsed.contentType || 'unknown').toLowerCase(),
+            senderEmail: parsed.senderEmail || null,
             isMarketing: !!parsed.isMarketing,
             hasSensitiveRequest: !!parsed.hasSensitiveRequest,
           };
         } catch {
           // If AI didn't return JSON, treat the whole response as raw text
-          return { text: raw.trim(), contentType: 'unknown', isMarketing: false, hasSensitiveRequest: false };
+          return { text: raw.trim(), contentType: 'unknown', senderEmail: null, isMarketing: false, hasSensitiveRequest: false };
         }
       }
 
@@ -259,6 +263,10 @@ If the image contains no text at all, set "text" to an empty string.`;
               textToAnalyze = parsed.text;
               imageContentType = parsed.isMarketing ? 'advertisement' : parsed.contentType;
               imageHasSensitiveRequest = parsed.hasSensitiveRequest;
+              if (parsed.senderEmail && !req.body.sender) {
+                req.body.sender = parsed.senderEmail;
+                console.log(`✉️ Extracted Sender Email from image: ${req.body.sender}`);
+              }
               extractedSuccessfully = true;
               console.log(`✅ Gemini Vision OCR success via ${model}! ContentType: ${imageContentType}, SensitiveRequest: ${imageHasSensitiveRequest}`);
             }
@@ -311,6 +319,10 @@ If the image contains no text at all, set "text" to an empty string.`;
               textToAnalyze = parsed.text;
               imageContentType = parsed.isMarketing ? 'advertisement' : parsed.contentType;
               imageHasSensitiveRequest = parsed.hasSensitiveRequest;
+              if (parsed.senderEmail && !req.body.sender) {
+                req.body.sender = parsed.senderEmail;
+                console.log(`✉️ Extracted Sender Email from image: ${req.body.sender}`);
+              }
               extractedSuccessfully = true;
               console.log(`✅ Groq Vision OCR success! ContentType: ${imageContentType}, SensitiveRequest: ${imageHasSensitiveRequest}`);
             }
