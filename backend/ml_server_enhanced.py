@@ -112,16 +112,26 @@ def get_risk_level(phishing_prob, confidence):
         return 'LOW'
 
 
-def get_recommendation(phishing_prob, risk_level):
+def get_recommendation(phishing_prob, risk_level, content_type="email"):
     """Get actionable recommendation for user"""
-    if phishing_prob > 0.8:
-        return '🚨 BLOCK and REPORT this message immediately'
-    elif phishing_prob > 0.65:
-        return '⚠️  VERIFY sender identity before responding. Do not click links or download attachments'
-    elif phishing_prob > 0.45:
-        return '❓ Be cautious - look for suspicious indicators before taking action'
+    if content_type == "url":
+        if phishing_prob > 0.8:
+            return '🚨 DANGEROUS: Do not click or visit this website. Close it immediately.'
+        elif phishing_prob > 0.65:
+            return '⚠️  HIGH RISK: This link looks fake. Do not enter any passwords or personal info.'
+        elif phishing_prob > 0.45:
+            return '❓ SUSPICIOUS: Be very careful. Double-check the website name before clicking.'
+        else:
+            return '✅ SAFE: This website appears to be completely legitimate.'
     else:
-        return '✅ This appears to be a legitimate message'
+        if phishing_prob > 0.8:
+            return '🚨 DANGEROUS: Do not reply. Delete and report this message immediately.'
+        elif phishing_prob > 0.65:
+            return '⚠️  HIGH RISK: Verify who actually sent this before responding. Do NOT click any links.'
+        elif phishing_prob > 0.45:
+            return '❓ SUSPICIOUS: Be cautious. Look for typos or fake sender names.'
+        else:
+            return '✅ SAFE: This message appears to be completely legitimate.'
 
 
 # ===== API ENDPOINTS =====
@@ -188,7 +198,7 @@ def analyze_email():
                 'safe_probability': safe_prob,
                 'confidence': confidence,
                 'risk_level': risk_level,
-                'recommendation': get_recommendation(phishing_prob, risk_level),
+                'recommendation': get_recommendation(phishing_prob, risk_level, "email"),
                 'model_version': 'ensemble-v2'
             },
             'features_detected': {
@@ -284,7 +294,7 @@ def analyze_url():
                 'phishing_probability': phishing_prob,
                 'confidence': confidence,
                 'risk_level': risk_level,
-                'recommendation': get_recommendation(phishing_prob, risk_level)
+                'recommendation': get_recommendation(phishing_prob, risk_level, "url")
             },
             'structural_features': {
                 'is_ip_address': features.get('is_ip_address', False),

@@ -56,72 +56,72 @@ function formatAnalysisResponse(mlResponse, contentType) {
     const features = mlResponse.features_detected;
     
     if (features.urgency_indicators?.has_urgency) {
-      indicators.push(`⚠️  Urgency language detected (${features.urgency_indicators.urgency_word_count} urgency keywords)`);
+      indicators.push(`⚠️  Tries to make you panic or act quickly (${features.urgency_indicators.urgency_word_count} urgency words found)`);
     }
     if (features.sender_indicators?.is_generic) {
-      indicators.push('⚠️  Generic sender name (e.g., "Admin", "Support")');
+      indicators.push('⚠️  Sender uses a generic, faceless name (like "Admin" or "Support")');
     }
     if (features.sender_indicators?.suspicious_domain) {
-      indicators.push('🚨 Sender domain is suspicious or use URL shortener');
+      indicators.push('🚨 The sender\'s email address looks fake or hidden');
     }
     if (features.url_indicators?.has_ip_url) {
-      indicators.push('🚨 Contains direct IP address URL (common in phishing)');
+      indicators.push('🚨 Contains suspicious numbers instead of normal website links');
     }
     if (features.url_indicators?.shortened_urls > 0) {
-      indicators.push(`⚠️  Contains ${features.url_indicators.shortened_urls} shortened URL(s)`);
+      indicators.push(`⚠️  Contains ${features.url_indicators.shortened_urls} shortened link(s) that hide the real destination`);
     }
     if (features.content_indicators?.requests_personal_info > 0) {
-      indicators.push(`🚨 Requests sensitive information (${features.content_indicators.requests_personal_info} fields)`);
+      indicators.push(`🚨 Asks you to hand over private, sensitive information`);
     }
     if (features.content_indicators?.has_forms) {
-      indicators.push('🚨 Contains embedded forms to collect data');
+      indicators.push('🚨 Tries to secretly collect your information directly inside the email');
     }
     if (features.content_indicators?.broken_grammar) {
-      indicators.push('⚠️  Contains broken English or poor grammar');
+      indicators.push('⚠️  Contains poor spelling and grammar (common in scams)');
     }
     if (features.content_indicators?.uses_authority_tactic) {
-      indicators.push('⚠️  Impersonates known authority (bank, service provider, etc.)');
+      indicators.push('⚠️  Pretends to be a trusted authority (like a bank, government, or boss)');
     }
     
     // CRITICAL FIX: If ML model predicts HIGH risk but no specific features found,
     // add ML model-based indicator to explain the score
     if (indicators.length === 0 && phishingProb >= 0.5) {
-      indicators.push(`🚨 ML model detected phishing patterns (${(phishingProb * 100).toFixed(0)}% confidence) - content shows suspicious characteristics`);
+      indicators.push(`🚨 The Artificial Intelligence detected invisible scam patterns (${(phishingProb * 100).toFixed(0)}% sure)`);
     }
   } else if (contentType === 'url' && mlResponse.structural_features) {
     const features = mlResponse.structural_features;
     
     if (features.is_ip_address) {
-      indicators.push('🚨 URL is direct IP address (very suspicious)');
+      indicators.push('🚨 The link uses suspicious numbers instead of a real name');
     }
     if (features.has_at_symbol) {
-      indicators.push('🚨 URL contains @ symbol (can hide real domain)');
+      indicators.push('🚨 The link uses tricks to hide where it actually goes to');
     }
     if (features.long_url) {
-      indicators.push('⚠️  Unusually long URL');
+      indicators.push('⚠️  The link is unusually long, which is often used to hide traps');
     }
     if (features.deep_subdomain) {
-      indicators.push('⚠️  Multiple subdomains (may hide real domain)');
+      indicators.push('⚠️  The link has too many fake sub-sections trying to look official');
     }
     if (features.uses_http) {
-      indicators.push('⚠️  Uses plain HTTP (not encrypted)');
+      indicators.push('⚠️  The website is completely unsecure and not encrypted');
     }
     if (features.new_tld) {
-      indicators.push('⚠️  Uses suspicious TLD (.tk, .ml, .ga, etc.)');
+      indicators.push('⚠️  The website extension (like .tk instead of .com) is known for scams');
     }
     if (features.looks_like_typo) {
-      indicators.push('🚨 Domain looks like common typo (e.g., "amaz0n")');
+      indicators.push('🚨 The link is purposely misspelled to trick your eyes (e.g., "amaz0n" instead of amazon)');
     }
     
     // Add reputation info
     if (mlResponse.reputation?.urlhaus_blacklisted) {
-      indicators.push(`🚨 Blacklisted on URLhaus (threat: ${mlResponse.reputation.urlhaus_threat})`);
+      indicators.push(`🚨 This exact link is already on a global cyber-security blacklist!`);
     }
     
     // CRITICAL FIX: If ML model predicts HIGH risk but no structural features found,
     // add ML model-based indicator to avoid contradictory messages
     if (indicators.length === 0 && phishingProb >= 0.5) {
-      indicators.push(`🚨 ML model detected phishing patterns (${(phishingProb * 100).toFixed(0)}% confidence) despite clean URL structure`);
+      indicators.push(`🚨 The Artificial Intelligence detected invisible scam patterns (${(phishingProb * 100).toFixed(0)}% sure)`);
     }
   }
 
