@@ -549,6 +549,22 @@ If the image contains no text at all, set "text" to an empty string.`;
       createdAt: new Date().toISOString()
     });
 
+    // ACTIVE LEARNING MODULE
+    // If the AI is uncertain (confidence < 0.35), flag this data for human review
+    // This allows the admin to label it correctly and use it to retrain future models.
+    if (analysis.confidence !== undefined && analysis.confidence < 0.35) {
+      console.log('🔄 Active Learning: Flagging low-confidence prediction for human review.');
+      await database.ref('active_learning_queue').child(recordId).set({
+        id: recordId,
+        content: type === 'image' ? '[Screenshot Data]' : (typeof textToAnalyze === 'string' ? textToAnalyze : ''),
+        type: type || 'text',
+        aiPredictedScore: analysis.riskScore || 0,
+        aiConfidence: analysis.confidence,
+        status: 'pending_review',
+        timestamp: new Date().toISOString()
+      });
+    }
+
     res.json({ analysis });
   } catch (error) {
     console.error('\n[Troubleshooting] Backend Analysis Error:');
