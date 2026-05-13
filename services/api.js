@@ -1,15 +1,8 @@
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// In production, the app will use the Render URL defined in the EXPO_PUBLIC_API_URL environment variable.
-// Locally, it will fall back to your machine's IP address.
-const YOUR_LOCAL_IP = "172.20.10.2";
-
-export const BASE_URL = process.env.EXPO_PUBLIC_API_URL || (
-  Platform.OS === "web"
-    ? "http://localhost:3001"
-    : `http://${YOUR_LOCAL_IP}:3001`
-);
+// Hardcoding the production Render URL to completely bypass local Expo cache issues
+export const BASE_URL = "https://phishguard-mobileapp.onrender.com";
 
 const API_BASE_URL = `${BASE_URL}/api`;
 
