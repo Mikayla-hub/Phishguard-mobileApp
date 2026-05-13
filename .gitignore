@@ -46,3 +46,7 @@ backend/config/firebase-service-account.json
 # generated native folders
 /ios
 /android
+
+# machine learning models
+*.joblib
+*.pkl
