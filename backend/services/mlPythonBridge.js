@@ -7,10 +7,10 @@
 const axios = require('axios');
 
 class MLPythonBridge {
-  constructor(pythonServerUrl = 'http://localhost:5000', retries = 3, timeout = 10000) {
+  constructor(pythonServerUrl = 'http://localhost:5000', retries = 3, timeout = 30000) {
     this.baseUrl = pythonServerUrl;
     this.retries = retries;
-    this.timeout = timeout;
+    this.timeout = timeout;  // Increased from 10s to 30s for complex ML analysis
     this.isConnected = false;
     this.requestCache = new Map();
     this.cacheExpiry = 0; // Disabled cache entirely for debugging
@@ -78,9 +78,13 @@ class MLPythonBridge {
           return result;
         } catch (err) {
           lastError = err;
+          const errorType = err.code === 'ECONNABORTED' ? 'TIMEOUT' : 'CONNECTION';
+          const errorMsg = err.message || err.code || 'Unknown error';
           if (attempt < this.retries - 1) {
-            console.warn(`⚠️  Attempt ${attempt + 1} failed, retrying...`);
-            await this.sleep(1000 * (attempt + 1));
+            console.warn(`⚠️  Attempt ${attempt + 1} failed [${errorType}]: ${errorMsg}. Retrying in ${(attempt + 1) * 2}s...`);
+            await this.sleep(1000 * (attempt + 1) * 2);  // Exponential backoff: 2s, 4s, 6s
+          } else {
+            console.error(`❌ Email analysis failed after ${this.retries} attempts: ${errorMsg}`);
           }
         }
       }
@@ -129,8 +133,13 @@ class MLPythonBridge {
           return result;
         } catch (err) {
           lastError = err;
+          const errorType = err.code === 'ECONNABORTED' ? 'TIMEOUT' : 'CONNECTION';
+          const errorMsg = err.message || err.code || 'Unknown error';
           if (attempt < this.retries - 1) {
-            await this.sleep(1000 * (attempt + 1));
+            console.warn(`⚠️  URL analysis attempt ${attempt + 1} failed [${errorType}]: ${errorMsg}. Retrying in ${(attempt + 1) * 2}s...`);
+            await this.sleep(1000 * (attempt + 1) * 2);  // Exponential backoff: 2s, 4s, 6s
+          } else {
+            console.error(`❌ URL analysis failed after ${this.retries} attempts: ${errorMsg}`);
           }
         }
       }

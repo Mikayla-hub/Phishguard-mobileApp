@@ -435,16 +435,50 @@ If the image contains no text at all, set "text" to an empty string.`;
     try {
       if (isUrl) {
         console.log('🔗 Analyzing as URL...');
-        const urlAnalysis = await mlBridge.analyzeUrl(textToAnalyze);
-        analysis = formatAnalysisResponse(urlAnalysis, 'url');
+        try {
+          const urlAnalysis = await mlBridge.analyzeUrl(textToAnalyze);
+          analysis = formatAnalysisResponse(urlAnalysis, 'url');
+        } catch (urlErr) {
+          console.warn(`⚠️  URL analysis timeout/error (${urlErr.code}), attempting fallback...`);
+          // Fallback to heuristic-only analysis for URL
+          analysis = {
+            riskLevel: 'medium',
+            riskScore: 0.5,
+            confidence: 0.3,
+            indicators: [
+              'ML analysis service timed out',
+              'Using heuristic-only evaluation',
+              'Recommend manual inspection'
+            ],
+            recommendations: ['Verify this URL through official channels before visiting'],
+            modelVersion: 'heuristic-fallback'
+          };
+        }
       } else {
         console.log('📧 Analyzing as email...');
-        const emailAnalysis = await mlBridge.analyzeEmail(
-          textToAnalyze,
-          req.body.sender || '',
-          req.body.subject || ''
-        );
-        analysis = formatAnalysisResponse(emailAnalysis, 'email');
+        try {
+          const emailAnalysis = await mlBridge.analyzeEmail(
+            textToAnalyze,
+            req.body.sender || '',
+            req.body.subject || ''
+          );
+          analysis = formatAnalysisResponse(emailAnalysis, 'email');
+        } catch (emailErr) {
+          console.warn(`⚠️  Email analysis timeout/error (${emailErr.code}), attempting fallback...`);
+          // Fallback to heuristic-only analysis for email
+          analysis = {
+            riskLevel: 'medium',
+            riskScore: 0.5,
+            confidence: 0.3,
+            indicators: [
+              'ML analysis service timed out',
+              'Using heuristic-only evaluation',
+              'Recommend manual inspection'
+            ],
+            recommendations: ['Verify sender identity through official channels before responding'],
+            modelVersion: 'heuristic-fallback'
+          };
+        }
       }
 
       if (!analysis) throw new Error('Invalid analysis response from ML server');
