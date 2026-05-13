@@ -15,7 +15,10 @@ def detect_typosquatting_url(hostname):
     if not hostname:
         return False
     
-    hostname_lower = hostname.lower().split('.')[0]  # Get just the domain name
+    parts = hostname.lower().split('.')
+    # Get the apex domain (second-to-last label, before the TLD)
+    # e.g., 'www.g00gle.com' -> 'g00gle', 'g00gle.com' -> 'g00gle'
+    hostname_lower = parts[-2] if len(parts) >= 2 else parts[0]
     
     # Comprehensive brand dictionary with various typosquatting patterns
     brands = {
@@ -350,7 +353,10 @@ class URLFeatureExtractor:
     @staticmethod
     def _detect_typosquatting(hostname):
         """Detect typosquatting and common brand impersonation patterns"""
-        hostname_lower = hostname.lower().split('.')[0]  # Get just the domain name
+        parts = hostname.lower().split('.')
+        # Get the apex domain (second-to-last label, before the TLD)
+        # e.g., 'www.g00gle.com' -> 'g00gle', 'g00gle.com' -> 'g00gle'
+        hostname_lower = parts[-2] if len(parts) >= 2 else parts[0]
         
         # Comprehensive brand dictionary with various typosquatting patterns
         brands = {

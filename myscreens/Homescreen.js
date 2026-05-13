@@ -5,13 +5,23 @@ import {
 import React, { useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../contexts/ThemeContext";
+import { BASE_URL } from "../services/api";
 
 const Homescreen = ({ navigation }) => {
   const [username, setUsername] = useState("User");
+  const [dailyTip, setDailyTip] = useState(null);
   const { colors, isDarkMode } = useTheme();
 
   useEffect(() => {
     AsyncStorage.getItem("username").then(n => { if (n) setUsername(n); });
+    
+    // Fetch dynamic AI security tip
+    fetch(`${BASE_URL}/api/notifications/daily-tip`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.tip) setDailyTip(data.tip);
+      })
+      .catch(err => console.log("Failed to load daily tip", err));
   }, []);
 
   const hour = new Date().getHours();
@@ -147,13 +157,14 @@ const Homescreen = ({ navigation }) => {
 
         {/* ── Security tip ── */}
         <View style={s.tipCard}>
-          <Text style={s.tipTitle}>🛡️ Today's Security Tip</Text>
-          <Text style={s.tipBody}>
-            Always hover over links before clicking. Phishing URLs often mimic
-            legitimate domains with subtle misspellings like{" "}
-            <Text style={{ fontWeight: "800", color: "#d93025" }}>paypa1.com</Text>{" "}
-            instead of paypal.com.
+          <Text style={s.tipTitle}>
+            🛡️ {dailyTip ? dailyTip.title : "Loading today's tip..."}
           </Text>
+          {dailyTip ? (
+            <Text style={s.tipBody}>{dailyTip.body}</Text>
+          ) : (
+            <ActivityIndicator size="small" color="#f9ab00" style={{ marginVertical: 10, alignSelf: 'flex-start' }} />
+          )}
         </View>
 
         <View style={{ height: 30 }} />

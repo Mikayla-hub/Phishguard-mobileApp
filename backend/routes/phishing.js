@@ -82,6 +82,12 @@ function formatAnalysisResponse(mlResponse, contentType) {
     if (features.content_indicators?.uses_authority_tactic) {
       indicators.push('⚠️  Impersonates known authority (bank, service provider, etc.)');
     }
+    
+    // CRITICAL FIX: If ML model predicts HIGH risk but no specific features found,
+    // add ML model-based indicator to explain the score
+    if (indicators.length === 0 && phishingProb >= 0.5) {
+      indicators.push(`🚨 ML model detected phishing patterns (${(phishingProb * 100).toFixed(0)}% confidence) - content shows suspicious characteristics`);
+    }
   } else if (contentType === 'url' && mlResponse.structural_features) {
     const features = mlResponse.structural_features;
     
@@ -111,6 +117,12 @@ function formatAnalysisResponse(mlResponse, contentType) {
     if (mlResponse.reputation?.urlhaus_blacklisted) {
       indicators.push(`🚨 Blacklisted on URLhaus (threat: ${mlResponse.reputation.urlhaus_threat})`);
     }
+    
+    // CRITICAL FIX: If ML model predicts HIGH risk but no structural features found,
+    // add ML model-based indicator to avoid contradictory messages
+    if (indicators.length === 0 && phishingProb >= 0.5) {
+      indicators.push(`🚨 ML model detected phishing patterns (${(phishingProb * 100).toFixed(0)}% confidence) despite clean URL structure`);
+    }
   }
 
   // Add confidence info
@@ -119,7 +131,13 @@ function formatAnalysisResponse(mlResponse, contentType) {
   }
 
   if (indicators.length === 0) {
-    indicators.push('No major phishing indicators detected');
+    // Only show "no indicators" if risk is LOW
+    if (phishingProb < 0.5) {
+      indicators.push('No major phishing indicators detected');
+    } else {
+      // For high-risk scores without specific features, be transparent about ML model
+      indicators.push(`⚠️  ML model predicts phishing risk (${(phishingProb * 100).toFixed(0)}% probability)`);
+    }
   }
 
   // Map risk level
