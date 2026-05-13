@@ -33,6 +33,83 @@ DATASETS_DIR = BASE_DIR / "data" / "datasets"
 MODELS_DIR = BASE_DIR / "models"
 
 
+def detect_typosquatting_url(hostname):
+    """Detect typosquatting patterns in URL hostname"""
+    if not hostname:
+        return False
+    
+    hostname_lower = hostname.lower().split('.')[0]  # Get just the domain name
+    
+    # Comprehensive brand dictionary with various typosquatting patterns
+    brands = {
+        'paypal': [
+            'paypa1', 'paypa|', 'paypai', 'paypa-l', 'pay-pal', 'paypall', 
+            'paypa', 'p4ypal', 'payp4l', 'paypàl', 'paypaI', 'p@ypal'
+        ],
+        'amazon': [
+            'amaz0n', 'amazo', 'amzon', 'amazon-', 'amazn', 'am4z0n',
+            'ama20n', 'am@zon', 'amazôn', 'amaz0'
+        ],
+        'google': [
+            'g00gle', 'gogle', 'googlе', 'googl', 'g0ogle', 'gооgle',
+            'go0gle', 'g@gle', 'goog1e'
+        ],
+        'apple': [
+            'app1e', 'appl', 'appel', 'app|e', 'apples', 'app1',
+            'a99le', 'àpple', 'app-le'
+        ],
+        'microsoft': [
+            'micros0ft', 'microso', 'microsft', 'micro$oft', 'mkrcsoft',
+            'microsoft-', 'm1cr050ft'
+        ],
+        'facebook': [
+            'faceb00k', 'facebookk', 'facbk', 'face600k', 'f4ceb00k',
+            'facebookl', 'facebook-'
+        ],
+        'instagram': [
+            'instag ram', 'instagra', 'insta-gram', 'insta9ram', 'inst4gr4m'
+        ],
+        'linkedin': [
+            'linkedln', 'linkdin', 'linkedin-', 'linkedin-com', 'linkedln-'
+        ],
+        'twitter': [
+            'twitt', 'twitter-', 'twiter', 'tw1tter', 'twiтter'
+        ],
+        'ebay': [
+            'ebay-', 'ebay1', 'eba7', 'ebay-com'
+        ],
+        'dropbox': [
+            'dropbo', 'dropbox-', 'dropbo-x', 'dr0pbox'
+        ],
+        'github': [
+            'githup', 'gitub', 'github-', 'gіthub'
+        ],
+        'stripe': [
+            'stripe-', 'str1pe', 'strlpe'
+        ],
+        'coinbase': [
+            'coinbase-', 'c01nbase'
+        ],
+        'twilio': [
+            'twilio-', 'tw1lio'
+        ]
+    }
+    
+    # Check for brand typos
+    for brand, typo_patterns in brands.items():
+        for pattern in typo_patterns:
+            if pattern in hostname_lower:
+                return True
+    
+    # Check for character substitutions
+    suspicious_chars = hostname_lower.replace('0', 'o').replace('1', 'l').replace('5', 's').replace('3', 'e')
+    for brand in brands.keys():
+        if brand in suspicious_chars and suspicious_chars != hostname_lower:
+            return True
+    
+    return False
+
+
 def enrich_url(url):
     """Append structural signal tokens to the URL string so TF-IDF can learn
     structural phishing patterns without needing scipy FeatureUnion."""
@@ -55,6 +132,10 @@ def enrich_url(url):
             tokens.append('__FEAT_MANY_PARAMS__')
         if p.scheme == 'http' and any(k in url.lower() for k in ['login','account','verify','secure']):
             tokens.append('__FEAT_HTTP_SENSITIVE__')
+        # Add typosquatting detection - HIGH PRIORITY
+        if detect_typosquatting_url(host):
+            tokens.append('__FEAT_TYPO__')
+            tokens.append('__TYPO_BRAND__')  # Extra emphasis
     except Exception:
         pass
     return ' '.join(tokens)

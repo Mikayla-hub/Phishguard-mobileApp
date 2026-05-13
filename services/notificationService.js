@@ -96,7 +96,7 @@ async function scheduleAt9am(title, body) {
     },
     trigger: {
       date: next9,
-      repeats: false,   // We re-schedule each day on app open
+      channelId: NOTIF_CHANNEL_ID,
     },
   });
 

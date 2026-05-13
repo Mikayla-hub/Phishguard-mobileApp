@@ -45,7 +45,7 @@ Respond ONLY with valid JSON in this exact format:
   // Try Gemini first
   try {
     const res = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       { contents: [{ parts: [{ text: prompt }] }] },
       { timeout: 20000 }
     );
@@ -63,7 +63,7 @@ Respond ONLY with valid JSON in this exact format:
   const groqRes = await axios.post(
     'https://api.groq.com/openai/v1/chat/completions',
     {
-      model: 'llama-3.3-70b-versatile',
+      model: 'llama3-70b-8192',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.9,
     },

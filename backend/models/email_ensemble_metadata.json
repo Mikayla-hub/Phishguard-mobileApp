@@ -2,11 +2,12 @@
   "model_type": "voting_ensemble",
   "components": [
     "rf",
-    "gb"
+    "gb",
+    "xgb"
   ],
   "n_features": 15000,
   "test_samples": 3913,
-  "test_accuracy": 0.9552772808586762,
+  "test_accuracy": 0.9529772553028367,
   "training_samples": 15649,
   "phishing_samples": 7868,
   "legitimate_samples": 11694

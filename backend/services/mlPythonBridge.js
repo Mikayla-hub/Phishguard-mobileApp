@@ -22,7 +22,7 @@ class MLPythonBridge {
   async healthCheck() {
     try {
       const response = await axios.get(`${this.baseUrl}/api/health`, {
-        timeout: 5000
+        timeout: 60000
       });
       this.isConnected = response.status === 200;
       console.log('🔗 ML Server connected:', this.isConnected ? '✅' : '❌');
