@@ -77,6 +77,11 @@ export function forgotPassword(email) {
   });
 }
 
+/**
+ * DEPRECATED: Firebase handles password reset via email link.
+ * Users click the link in their email and reset password on Firebase's hosted page.
+ * Kept for backwards compatibility in case the ResetPasswordScreen is accessed directly.
+ */
 export function resetPassword(email, otp, newPassword) {
   return request("/auth/reset-password", {
     method: "POST",
