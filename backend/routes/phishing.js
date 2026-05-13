@@ -485,20 +485,54 @@ If the image contains no text at all, set "text" to an empty string.`;
 
       // ── Post-process: Trusted Sender Override ──
       // Crucial for reducing false positives for SMEs and individuals receiving legitimate security alerts.
-      const senderEmail = req.body.sender || '';
+      let senderEmail = req.body.sender || '';
+      
+      // For images, extract sender from OCR'd text if not provided
+      if (type === 'image' && !senderEmail && textToAnalyze) {
+        // Look for "From:" or "From" patterns in email headers
+        const fromMatch = textToAnalyze.match(/From\s*[:\s]+([a-zA-Z0-9._+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+        if (fromMatch) {
+          senderEmail = fromMatch[1];
+          console.log(`📬 Extracted sender from image: ${senderEmail}`);
+        }
+      }
+      
       if (!isUrl && senderEmail) {
         const trustedDomains = [
-          'google.com', 'accounts.google.com', 'microsoft.com', 'security.microsoft.com',
-          'apple.com', 'paypal.com', 'amazon.com', 'netflix.com', 'linkedin.com', 'github.com'
+          'google.com', 'accounts.google.com', 'no-reply@accounts.google.com',
+          'microsoft.com', 'security.microsoft.com', 'noreply@microsoft.com',
+          'apple.com', 'noreply@apple.com',
+          'paypal.com', 'service@paypal.com',
+          'amazon.com', 'account-update@amazon.com',
+          'netflix.com', 'security@netflix.com',
+          'linkedin.com', 'noreply@linkedin.com',
+          'github.com', 'noreply@github.com'
         ];
         
-        const senderDomain = senderEmail.split('@').pop().toLowerCase().trim();
+        // Extract domain (handles both "domain.com" and "email@domain.com")
+        let senderDomain = senderEmail;
+        if (senderEmail.includes('@')) {
+          senderDomain = senderEmail.split('@').pop().toLowerCase().trim();
+        } else {
+          senderDomain = senderEmail.toLowerCase().trim();
+        }
         
-        if (trustedDomains.includes(senderDomain)) {
-          // Only override if there isn't an undeniable structural threat (like a raw IP link)
-          const hasCriticalThreat = (analysis.indicators || []).some(ind => ind.includes('suspicious numbers instead of normal website links'));
+        if (trustedDomains.includes(senderDomain) || trustedDomains.some(td => senderEmail.includes(td))) {
+          // For trusted senders, only override if there are NO actual structural threats
+          // (Grammar/urgency language is normal for legitimate security alerts from official companies)
+          const CRITICAL_THREAT_PATTERNS = [
+            /raw ip address/i,           // IP-based URLs are always suspicious
+            /uses http \(/i,              // Non-HTTPS for sensitive pages
+            /phishing.*probability/i,     // ML model detected strong phishing pattern
+            /requests.*password|credential/i,  // Requests sensitive info
+            /contains.*forms?.*data/i,    // Embedded forms for credential harvesting
+          ];
           
-          if (!hasCriticalThreat && analysis.riskScore > 0.3) {
+          const hasCriticalThreat = (analysis.indicators || []).some(ind => 
+            CRITICAL_THREAT_PATTERNS.some(re => re.test(ind))
+          );
+          
+          if (!hasCriticalThreat && analysis.riskScore > 0.25) {
             console.log(`🛡️ Trusted Sender Override: Reducing false positive for verified domain: ${senderDomain}`);
             analysis.riskScore = 0.1; // Cap at 10% risk
             analysis.riskLevel = 'low';
