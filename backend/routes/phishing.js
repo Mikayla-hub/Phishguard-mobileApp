@@ -51,10 +51,10 @@ function formatAnalysisResponse(mlResponse, contentType) {
 
   // Build indicators from detected features
   const indicators = [];
-  
+
   if (contentType === 'email' && mlResponse.features_detected) {
     const features = mlResponse.features_detected;
-    
+
     if (features.urgency_indicators?.has_urgency) {
       indicators.push(`⚠️  Tries to make you panic or act quickly (${features.urgency_indicators.urgency_word_count} urgency words found)`);
     }
@@ -82,7 +82,7 @@ function formatAnalysisResponse(mlResponse, contentType) {
     if (features.content_indicators?.uses_authority_tactic) {
       indicators.push('⚠️  Pretends to be a trusted authority (like a bank, government, or boss)');
     }
-    
+
     // CRITICAL FIX: If ML model predicts HIGH risk but no specific features found,
     // add ML model-based indicator to explain the score
     if (indicators.length === 0 && phishingProb >= 0.5) {
@@ -90,7 +90,7 @@ function formatAnalysisResponse(mlResponse, contentType) {
     }
   } else if (contentType === 'url' && mlResponse.structural_features) {
     const features = mlResponse.structural_features;
-    
+
     if (features.is_ip_address) {
       indicators.push('🚨 The link uses suspicious numbers instead of a real name');
     }
@@ -112,12 +112,12 @@ function formatAnalysisResponse(mlResponse, contentType) {
     if (features.looks_like_typo) {
       indicators.push('🚨 The link is purposely misspelled to trick your eyes (e.g., "amaz0n" instead of amazon)');
     }
-    
+
     // Add reputation info
     if (mlResponse.reputation?.urlhaus_blacklisted) {
       indicators.push(`🚨 This exact link is already on a global cyber-security blacklist!`);
     }
-    
+
     // CRITICAL FIX: If ML model predicts HIGH risk but no structural features found,
     // add ML model-based indicator to avoid contradictory messages
     if (indicators.length === 0 && phishingProb >= 0.5) {
@@ -173,13 +173,13 @@ router.post('/analyze', authenticate, async (req, res) => {
     // 1. If it's an image, perform OCR to extract text
     if (type === 'image') {
       console.log('🖼️ Extracting text from image...');
-      
+
       // Clean base64 string
       const isDataUrl = content.startsWith('data:image');
       const base64Data = isDataUrl ? content : `data:image/jpeg;base64,${content}`;
       const base64Raw = isDataUrl ? content.split(',')[1] : content;
       const mimeType = isDataUrl ? content.split(';')[0].split(':')[1] : 'image/jpeg';
-      
+
       const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
       let extractedSuccessfully = false;
 
@@ -256,10 +256,10 @@ If the image contains no text at all, set "text" to an empty string.`;
             const raw = response.data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
             if (raw) {
               const parsed = parseOcrJson(raw);
-              textToAnalyze             = parsed.text;
-              imageContentType          = parsed.isMarketing ? 'advertisement' : parsed.contentType;
-              imageHasSensitiveRequest  = parsed.hasSensitiveRequest;
-              extractedSuccessfully     = true;
+              textToAnalyze = parsed.text;
+              imageContentType = parsed.isMarketing ? 'advertisement' : parsed.contentType;
+              imageHasSensitiveRequest = parsed.hasSensitiveRequest;
+              extractedSuccessfully = true;
               console.log(`✅ Gemini Vision OCR success via ${model}! ContentType: ${imageContentType}, SensitiveRequest: ${imageHasSensitiveRequest}`);
             }
           } catch (err) {
@@ -308,10 +308,10 @@ If the image contains no text at all, set "text" to an empty string.`;
             const raw = groqResponse.data.choices[0].message.content.trim();
             if (raw) {
               const parsed = parseOcrJson(raw);
-              textToAnalyze             = parsed.text;
-              imageContentType          = parsed.isMarketing ? 'advertisement' : parsed.contentType;
-              imageHasSensitiveRequest  = parsed.hasSensitiveRequest;
-              extractedSuccessfully     = true;
+              textToAnalyze = parsed.text;
+              imageContentType = parsed.isMarketing ? 'advertisement' : parsed.contentType;
+              imageHasSensitiveRequest = parsed.hasSensitiveRequest;
+              extractedSuccessfully = true;
               console.log(`✅ Groq Vision OCR success! ContentType: ${imageContentType}, SensitiveRequest: ${imageHasSensitiveRequest}`);
             }
           } catch (groqErr) {
@@ -332,7 +332,7 @@ If the image contains no text at all, set "text" to an empty string.`;
           console.log('⚙️ Running local Tesseract.js OCR (last resort)...');
           // Create worker properly with error handling
           worker = await Tesseract.createWorker();
-          
+
           // Use Buffer or data URL - Tesseract prefers data URLs
           const { data: { text } } = await worker.recognize(base64Data);
           textToAnalyze = cleanOcrText(text);   // clean before analysis
@@ -352,7 +352,7 @@ If the image contains no text at all, set "text" to an empty string.`;
           }
         }
       }
-      
+
       console.log(`📝 Extracted Text Preview: ${textToAnalyze.substring(0, 100).replace(/\n/g, ' ')}...`);
 
       if (!textToAnalyze) {
@@ -421,10 +421,10 @@ If the image contains no text at all, set "text" to an empty string.`;
 
     // 2. Intelligent model selection based on content type
     console.log('🧠 Invoking ML analysis (ensemble models with confidence scoring)...');
-    
+
     let analysis = null;
     const isUrl = /^https?:\/\//i.test(textToAnalyze) ||
-                  /^(www\.|[a-z0-9-]+\.[a-z]{2,})/i.test(textToAnalyze);
+      /^(www\.|[a-z0-9-]+\.[a-z]{2,})/i.test(textToAnalyze);
 
     // Ensure ML bridge is connected
     if (!mlBridgeReady) {
@@ -448,6 +448,36 @@ If the image contains no text at all, set "text" to an empty string.`;
       }
 
       if (!analysis) throw new Error('Invalid analysis response from ML server');
+
+      // ── Post-process: Trusted Sender Override ──
+      // Crucial for reducing false positives for SMEs and individuals receiving legitimate security alerts.
+      const senderEmail = req.body.sender || '';
+      if (!isUrl && senderEmail) {
+        const trustedDomains = [
+          'google.com', 'accounts.google.com', 'microsoft.com', 'security.microsoft.com',
+          'apple.com', 'paypal.com', 'amazon.com', 'netflix.com', 'linkedin.com', 'github.com'
+        ];
+        
+        const senderDomain = senderEmail.split('@').pop().toLowerCase().trim();
+        
+        if (trustedDomains.includes(senderDomain)) {
+          // Only override if there isn't an undeniable structural threat (like a raw IP link)
+          const hasCriticalThreat = (analysis.indicators || []).some(ind => ind.includes('suspicious numbers instead of normal website links'));
+          
+          if (!hasCriticalThreat && analysis.riskScore > 0.3) {
+            console.log(`🛡️ Trusted Sender Override: Reducing false positive for verified domain: ${senderDomain}`);
+            analysis.riskScore = 0.1; // Cap at 10% risk
+            analysis.riskLevel = 'low';
+            analysis.indicators = [
+              '✅ The sender\'s email address is officially verified and trusted',
+              '✅ Automated security alerts from this company are normal and safe'
+            ];
+            analysis.recommendations = [
+              `✅ SAFE: This is a legitimate alert from ${senderDomain}. It is safe to follow their instructions.`
+            ];
+          }
+        }
+      }
 
       // ── Post-process: context-aware filtering for image analysis ──
       if (type === 'image' && imageContentType === 'advertisement') {
@@ -473,7 +503,7 @@ If the image contains no text at all, set "text" to an empty string.`;
           analysis.indicators = [
             '🚨 Fake security alert / scareware content detected',
             '🚨 Claims of viruses or device compromise are a classic phishing tactic',
-            ...( analysis.indicators || []).filter(i => !/no (readable|major)/i.test(i)),
+            ...(analysis.indicators || []).filter(i => !/no (readable|major)/i.test(i)),
           ];
           // Ensure risk reflects the threat
           analysis.riskScore = Math.max(analysis.riskScore, 0.75);
@@ -524,7 +554,7 @@ If the image contains no text at all, set "text" to an empty string.`;
         }
       }
 
-      console.log(`✅ Analysis complete: ${analysis.riskLevel} (${(analysis.riskScore*100).toFixed(1)}% phishing probability)`);
+      console.log(`✅ Analysis complete: ${analysis.riskLevel} (${(analysis.riskScore * 100).toFixed(1)}% phishing probability)`);
     } catch (mlErr) {
       console.error('❌ ML Analysis Error:', mlErr.message);
       analysis = {
@@ -548,22 +578,6 @@ If the image contains no text at all, set "text" to an empty string.`;
       recommendations: analysis.recommendations || ['No recommendations provided'],
       createdAt: new Date().toISOString()
     });
-
-    // ACTIVE LEARNING MODULE
-    // If the AI is uncertain (confidence < 0.35), flag this data for human review
-    // This allows the admin to label it correctly and use it to retrain future models.
-    if (analysis.confidence !== undefined && analysis.confidence < 0.35) {
-      console.log('🔄 Active Learning: Flagging low-confidence prediction for human review.');
-      await database.ref('active_learning_queue').child(recordId).set({
-        id: recordId,
-        content: type === 'image' ? '[Screenshot Data]' : (typeof textToAnalyze === 'string' ? textToAnalyze : ''),
-        type: type || 'text',
-        aiPredictedScore: analysis.riskScore || 0,
-        aiConfidence: analysis.confidence,
-        status: 'pending_review',
-        timestamp: new Date().toISOString()
-      });
-    }
 
     res.json({ analysis });
   } catch (error) {
