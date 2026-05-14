@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const MLPythonBridge = require('../services/mlPythonBridge');
+const { validateWithFewShot } = require('../services/fewShotValidator');
+const { updateSenderReputation, getSenderReputation, applyReputationAdjustment } = require('../services/senderReputationGraph');
 const db = require('../config/database');
 const Tesseract = require('tesseract.js');
 const { authenticate } = require('../middleware/auth');
@@ -469,12 +471,53 @@ If the image contains no text at all, set "text" to an empty string.`;
       } else {
         console.log('📧 Analyzing as email...');
         try {
+          // ── SENDER REPUTATION: Query historical data before ML scoring ──
+          const database = db.getDb();
+          const senderForAnalysis = req.body.sender || '';
+          const reputation = await getSenderReputation(database, senderForAnalysis).catch(() => null);
+          
           const emailAnalysis = await mlBridge.analyzeEmail(
             textToAnalyze,
-            req.body.sender || '',
+            senderForAnalysis,
             req.body.subject || ''
           );
           analysis = formatAnalysisResponse(emailAnalysis, 'email');
+
+          // ── REPUTATION ADJUSTMENT: Adjust score based on historical domain behavior ──
+          if (reputation && analysis) {
+            const { adjustedProb, adjustment } = applyReputationAdjustment(analysis.riskScore, reputation);
+            if (adjustment !== 'none') {
+              analysis.riskScore = adjustedProb;
+              analysis.riskLevel = adjustedProb < 0.3 ? 'low' : adjustedProb < 0.5 ? 'medium' : 'high';
+              analysis.indicators = analysis.indicators || [];
+              if (adjustment === 'dampened') {
+                analysis.indicators.unshift(`✅ This sender has a trusted history (${reputation.totalScans} previous safe scans)`);
+              } else if (adjustment === 'amplified') {
+                analysis.indicators.unshift(`🚨 This sender domain has been flagged ${reputation.flaggedCount} time(s) before`);
+              }
+            }
+          }
+
+          // ── FEW-SHOT VALIDATION: Run LLM second-opinion on borderline cases ──
+          const prob = analysis ? analysis.riskScore : 0.5;
+          const isUncertain = prob >= 0.25 && prob <= 0.65;
+          if (isUncertain && senderForAnalysis && textToAnalyze.length > 30) {
+            const fewShotResult = await validateWithFewShot(textToAnalyze, senderForAnalysis, prob);
+            if (fewShotResult) {
+              // Blend RF and LLM scores: LLM gets 60% weight on borderline cases
+              const blendedProb = (prob * 0.40) + ((fewShotResult.isPhishing ? fewShotResult.confidence : 1 - fewShotResult.confidence) * 0.60);
+              analysis.riskScore = parseFloat(blendedProb.toFixed(3));
+              analysis.riskLevel = blendedProb < 0.3 ? 'low' : blendedProb < 0.5 ? 'medium' : 'high';
+              analysis.fewShotReason = fewShotResult.reason;
+              if (!fewShotResult.isPhishing && prob > 0.4) {
+                analysis.indicators = [
+                  `✅ AI second-opinion: ${fewShotResult.reason}`,
+                  ...(analysis.indicators || []).slice(0, 2),
+                ];
+              }
+              console.log(`🔀 [FewShot] Blended score: RF=${(prob*100).toFixed(0)}% + LLM → ${(blendedProb*100).toFixed(0)}%`);
+            }
+          }
         } catch (emailErr) {
           console.warn(`⚠️  Email analysis timeout/error (${emailErr.code}), attempting fallback...`);
           // Fallback to heuristic-only analysis for email
@@ -646,18 +689,48 @@ If the image contains no text at all, set "text" to an empty string.`;
       };
     }
 
-    // 3. Save the results directly to Firebase Realtime Database
+    // 3. Save to Firebase history + Active Learning + Sender Reputation Graph
     const recordId = uuidv4();
+    const database = db.getDb();
+    const finalRiskScore = analysis.riskScore || 0;
+    const finalRiskLevel = analysis.riskLevel || 'safe';
+    const senderEmail = req.body.sender || '';
+
+    // Save analysis history
     await database.ref('analysis_history').child(recordId).set({
       id: recordId,
       inputType: type || 'text',
-      inputContent: type === 'image' ? '[Screenshot Data]' : (typeof textToAnalyze === 'string' ? textToAnalyze : JSON.stringify(textToAnalyze || '')),
-      riskScore: analysis.riskScore || 0,
-      riskLevel: analysis.riskLevel || 'safe',
+      inputContent: type === 'image' ? '[Screenshot Data]' : (typeof textToAnalyze === 'string' ? textToAnalyze.substring(0, 500) : ''),
+      riskScore: finalRiskScore,
+      riskLevel: finalRiskLevel,
+      sender: senderEmail,
       indicators: analysis.indicators || ['No indicators provided'],
       recommendations: analysis.recommendations || ['No recommendations provided'],
       createdAt: new Date().toISOString()
     });
+
+    // Active Learning: Save low-confidence predictions for human review
+    const confidence = analysis.confidence || Math.abs(finalRiskScore - 0.5) * 2;
+    if (confidence < 0.35) {
+      await database.ref('active_learning_queue').child(recordId).set({
+        id: recordId,
+        inputType: type || 'text',
+        inputContent: type === 'image' ? '[Screenshot]' : (textToAnalyze || '').substring(0, 500),
+        sender: senderEmail,
+        rawRiskScore: finalRiskScore,
+        riskLevel: finalRiskLevel,
+        confidence: parseFloat((confidence).toFixed(3)),
+        fewShotReason: analysis.fewShotReason || null,
+        reviewStatus: 'pending',
+        createdAt: new Date().toISOString(),
+      });
+      console.log(`🎓 [ActiveLearning] Low-confidence scan queued for review (confidence=${(confidence*100).toFixed(0)}%)`);
+    }
+
+    // Sender Reputation Graph: Update domain history (fire-and-forget)
+    if (senderEmail && type !== 'url') {
+      updateSenderReputation(database, senderEmail, finalRiskScore, finalRiskLevel).catch(() => {});
+    }
 
     res.json({ analysis });
   } catch (error) {
