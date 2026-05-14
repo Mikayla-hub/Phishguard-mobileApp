@@ -114,6 +114,12 @@ function formatAnalysisResponse(mlResponse, contentType) {
     if (features.looks_like_typo) {
       indicators.push('🚨 The link is purposely misspelled to trick your eyes (e.g., "amaz0n" instead of amazon)');
     }
+    if (features.is_trusted_url) {
+      indicators.push('✅ Verified Trusted Domain: This is a genuine corporate website');
+      // Ensure risk score is ultra low for UI purposes
+      phishingProb = Math.min(phishingProb, 0.02);
+      riskLevel = 'LOW';
+    }
 
     // Add reputation info
     if (mlResponse.reputation?.urlhaus_blacklisted) {

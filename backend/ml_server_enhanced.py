@@ -401,15 +401,43 @@ def analyze_url():
         phishing_prob = float(y_proba[1])
         safe_prob = float(y_proba[0])
         
-        # TYPOSQUATTING BOOST: If typosquatting is detected, significantly increase phishing probability
-        if features.get('looks_like_typo', False):
-            # Boost phishing probability if typo detected
-            # If model is uncertain (prob between 0.3-0.7), move towards phishing
-            if phishing_prob < 0.7:
-                phishing_prob = min(0.95, phishing_prob + 0.3)  # Strong boost
-            # If model thinks it's safe, override with suspicious
-            if phishing_prob < 0.5:
-                phishing_prob = 0.75
+        # ── TRUSTED URL SHORT-CIRCUIT ─────────────────────────────────────────────
+        # If the URL is exactly a verified corporate domain (no typos), bypass the AI
+        # and force the score to 1% to prevent baseline ML drift from causing false alarms.
+        import urllib.parse
+        parsed = urllib.parse.urlparse(url if url.startswith('http') else 'http://' + url)
+        hostname_lower = (parsed.hostname or '').lower()
+        
+        # Strip www. for checking
+        root_domain = hostname_lower[4:] if hostname_lower.startswith('www.') else hostname_lower
+        
+        trusted_domains = {
+            'google.com', 'google.co.zw', 'gmail.com',
+            'microsoft.com', 'office.com', 'live.com', 'outlook.com',
+            'apple.com', 'icloud.com',
+            'amazon.com', 'amazon.co.uk',
+            'paypal.com', 'stripe.com',
+            'facebook.com', 'instagram.com', 'whatsapp.com',
+            'linkedin.com', 'twitter.com', 'x.com',
+            'github.com', 'gitlab.com'
+        }
+        
+        # Ensure it's not flagged as a typo AND matches a trusted root domain exactly
+        if root_domain in trusted_domains and not features.get('looks_like_typo', False):
+            phishing_prob = 0.01  # 1% Risk
+            safe_prob = 0.99
+            features['is_trusted_url'] = True
+        else:
+            features['is_trusted_url'] = False
+            # TYPOSQUATTING BOOST: If typosquatting is detected, significantly increase phishing probability
+            if features.get('looks_like_typo', False):
+                # Boost phishing probability if typo detected
+                # If model is uncertain (prob between 0.3-0.7), move towards phishing
+                if phishing_prob < 0.7:
+                    phishing_prob = min(0.95, phishing_prob + 0.3)  # Strong boost
+                # If model thinks it's safe, override with suspicious
+                if phishing_prob < 0.5:
+                    phishing_prob = 0.75
         
         confidence = abs(phishing_prob - (1 - phishing_prob))
         risk_level = get_risk_level(phishing_prob, confidence)
