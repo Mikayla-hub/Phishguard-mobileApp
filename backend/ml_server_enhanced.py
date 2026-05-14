@@ -188,6 +188,34 @@ def analyze_email():
         
         phishing_prob = float(y_proba[1])
         safe_prob = float(y_proba[0])
+        
+        # ── TRUSTED SENDER SHORT-CIRCUIT ──────────────────────────────────────────
+        # If the sender domain is a verified corporate entity, completely skip ML panic.
+        # Real phishing would never come from the actual google.com / microsoft.com domain.
+        is_trusted_sender = features.get('is_trusted_sender', False)
+        has_critical_structural_threat = (
+            features.get('has_ip_url', False) or
+            features.get('has_form', False) or
+            features.get('requests_personal_info', 0) > 0
+        )
+        if is_trusted_sender and not has_critical_structural_threat:
+            phishing_prob = 0.08   # 8% — effectively "Safe"
+            safe_prob = 0.92
+        else:
+            # ── BIAS CORRECTION ALGORITHM ────────────────────────────────────────
+            # TF-IDF models panic over words like "secure", "account", "verify".
+            # If the AI is suspicious but the feature extractor found ZERO real threats,
+            # aggressively dampen the score to eliminate false positives.
+            has_any_structural_threat = (
+                has_critical_structural_threat or
+                features.get('shortened_url_count', 0) > 0 or
+                features.get('sender_suspicious_domain', False) or
+                features.get('uses_authority_tactic', False)
+            )
+            if phishing_prob > 0.4 and not has_any_structural_threat:
+                phishing_prob = phishing_prob * 0.35
+                safe_prob = 1.0 - phishing_prob
+        
         confidence = abs(phishing_prob - safe_prob)
         risk_level = get_risk_level(phishing_prob, confidence)
         

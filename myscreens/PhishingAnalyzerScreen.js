@@ -83,7 +83,7 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
         // Resize image if it's too large to prevent huge base64 payloads
         // but keep aspect ratio so no content is lost
         const resizeAction = width > 1080 ? [{ resize: { width: 1080 } }] : [];
-        
+
         const manipResult = await ImageManipulator.manipulateAsync(
           originalUri,
           resizeAction,
@@ -115,7 +115,7 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
         ? `From: ${senderEmail.trim()}\n\n${inputText}`
         : inputText;
 
-      const response = await analyzePhishing(analysisText, analysisType);
+      const response = await analyzePhishing(analysisText, analysisType, senderEmail.trim(), "");
       const analysis = response?.analysis;
 
       if (!analysis) {
@@ -143,8 +143,8 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
         detectedIndicators,
         recommendation,
         noText: analysis.modelVersion === 'no-text-bypass' ||
-                (analysisType === 'image' && riskScorePercent === 0 &&
-                 detectedIndicators.some(i => /no (readable )?text/i.test(i))),
+          (analysisType === 'image' && riskScorePercent === 0 &&
+            detectedIndicators.some(i => /no (readable )?text/i.test(i))),
         analyzedText:
           analysisType === 'image' ? "Screenshot Analysis" : inputText.substring(0, 100) + (inputText.length > 100 ? "..." : ""),
       };
@@ -188,17 +188,17 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
 
   const handleGeneratePlan = async () => {
     if (!results) return;
-    
+
     setIsGeneratingPlan(true);
     try {
       let calculatedSeverity = "low";
       if (results.riskScore >= 80) calculatedSeverity = "critical";
       else if (results.riskScore >= 60) calculatedSeverity = "high";
       else if (results.riskScore >= 40) calculatedSeverity = "medium";
-      
+
       let threatPrefix = analysisType === "url" ? "Malicious URL" : analysisType === "email" ? "Phishing Email" : "Suspicious Content";
       const incidentType = `${threatPrefix} Detection (${results.riskScore}% Risk)`;
-      
+
       const payload = {
         title: `Automated Analyzer Threat: ${threatPrefix}`,
         incidentType: incidentType,
@@ -209,15 +209,15 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
           `Indicators: ${results.detectedIndicators.join(", ")}`,
         ].filter(Boolean).join("\n"),
       };
-      
+
       await generateIncidentPlan(payload);
       navigation.navigate("IncidentResponseScreen");
-      
+
     } catch (error) {
-       console.error("Failed to generate response plan:", error);
-       Alert.alert("Plan Generation Failed", error?.message || "Could not draft response plan. Try again.");
+      console.error("Failed to generate response plan:", error);
+      Alert.alert("Plan Generation Failed", error?.message || "Could not draft response plan. Try again.");
     } finally {
-       setIsGeneratingPlan(false);
+      setIsGeneratingPlan(false);
     }
   };
 
@@ -270,13 +270,13 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
           {/* Input Area */}
           <View style={styles.inputSection}>
             <Text style={styles.inputLabel}>
-              {analysisType === "url" 
-                ? "Enter URL to analyze:" 
-                : analysisType === "email" 
-                ? "Paste email content:" 
-                : "Upload a screenshot:"}
+              {analysisType === "url"
+                ? "Enter URL to analyze:"
+                : analysisType === "email"
+                  ? "Paste email content:"
+                  : "Upload a screenshot:"}
             </Text>
-            
+
             {analysisType === "image" ? (
               <View style={styles.imageUploadContainer}>
                 {imageUri ? (
@@ -338,7 +338,7 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
                 />
               </>
             )}
-            
+
             <View style={styles.buttonRow}>
               <TouchableOpacity
                 style={[styles.analyzeButton, !inputText.trim() && styles.analyzeButtonDisabled]}
@@ -492,7 +492,7 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
                       style={styles.reportButton}
                       onPress={() => navigation.navigate("ReportPhishingScreen", {
                         prefilledContent: inputText,
-                        analysisResults:  results,
+                        analysisResults: results,
                         reportType: analysisType === "image" ? "other" : analysisType,
                         senderEmail: senderEmail || undefined,
                       })}

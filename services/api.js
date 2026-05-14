@@ -124,10 +124,10 @@ export function verify2FACode(code, enable) {
 
 
 
-export function analyzePhishing(content, type) {
+export function analyzePhishing(content, type, sender = "", subject = "") {
   return request("/phishing/analyze", {
     method: "POST",
-    body: { content, type },
+    body: { content, type, sender, subject },
   });
 }
 

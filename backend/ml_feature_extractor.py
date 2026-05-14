@@ -130,8 +130,25 @@ class EmailFeatureExtractor:
     ]
     
     GENERIC_SENDERS = [
-        'admin', 'support', 'noreply', 'no-reply', 'info', 'help',
-        'notifications', 'alerts', 'security', 'mailer-daemon'
+        'admin', 'support', 'info', 'help',
+        'mailer-daemon'
+    ]
+    
+    # Domains that are always trusted — never flag as suspicious
+    TRUSTED_SENDER_DOMAINS = [
+        'google.com', 'accounts.google.com', 'gmail.com',
+        'microsoft.com', 'live.com', 'outlook.com', 'hotmail.com',
+        'apple.com', 'icloud.com',
+        'amazon.com', 'amazon.co.uk',
+        'paypal.com',
+        'netflix.com',
+        'linkedin.com',
+        'github.com',
+        'twitter.com', 'x.com',
+        'facebook.com', 'meta.com',
+        'zoom.us',
+        'dropbox.com',
+        'spotify.com',
     ]
     
     SUSPICIOUS_DOMAINS = [
@@ -160,13 +177,22 @@ class EmailFeatureExtractor:
         sender_prefix = sender_lower.split('@')[0] if '@' in sender_lower else sender_lower
         sender_domain = sender_lower.split('@')[1] if '@' in sender_lower else ''
         
-        features['sender_is_generic'] = any(
-            gen in sender_prefix for gen in EmailFeatureExtractor.GENERIC_SENDERS
+        # Check if sender domain is a trusted corporate domain — never flag these
+        is_trusted_domain = any(
+            sender_domain == td or sender_domain.endswith('.' + td)
+            for td in EmailFeatureExtractor.TRUSTED_SENDER_DOMAINS
         )
-        features['sender_has_numbers'] = bool(re.search(r'\d', sender_prefix))
+        
+        features['is_trusted_sender'] = is_trusted_domain
+        features['sender_is_generic'] = (
+            any(gen in sender_prefix for gen in EmailFeatureExtractor.GENERIC_SENDERS)
+            and not is_trusted_domain
+        )
+        features['sender_has_numbers'] = bool(re.search(r'\d', sender_prefix)) and not is_trusted_domain
         features['sender_has_special_chars'] = bool(re.search(r'[+_.-]', sender_prefix))
-        features['sender_suspicious_domain'] = any(
-            susp in sender_domain for susp in EmailFeatureExtractor.SUSPICIOUS_DOMAINS
+        features['sender_suspicious_domain'] = (
+            any(susp in sender_domain for susp in EmailFeatureExtractor.SUSPICIOUS_DOMAINS)
+            and not is_trusted_domain
         )
         
         # ===== URL FEATURES =====
