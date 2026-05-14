@@ -10,6 +10,7 @@ Server will run on http://localhost:5000
 """
 
 import os
+import re
 import sys
 from pathlib import Path
 import json
@@ -100,16 +101,80 @@ def load_models():
         sys.exit(1)
 
 
-def get_risk_level(phishing_prob, confidence):
-    """Determine risk level based on probability and confidence"""
-    if phishing_prob > 0.75 and confidence > 0.3:
-        return 'CRITICAL'
-    elif phishing_prob > 0.6 and confidence > 0.2:
-        return 'HIGH'
-    elif phishing_prob > 0.4:
-        return 'MEDIUM'
+def get_risk_level(phishing_prob, confidence, content_type="email"):
+    """Determine risk level based on probability, confidence, and content type.
+    Emails use higher thresholds than URLs to reduce false positives on legitimate business emails.
+    """
+    if content_type == "url":
+        # URLs: standard thresholds (structural threats are clearer)
+        if phishing_prob > 0.75 and confidence > 0.3:
+            return 'CRITICAL'
+        elif phishing_prob > 0.60 and confidence > 0.2:
+            return 'HIGH'
+        elif phishing_prob > 0.40:
+            return 'MEDIUM'
+        else:
+            return 'LOW'
     else:
-        return 'LOW'
+        # Emails: RAISED thresholds — harder to reach HIGH/CRITICAL
+        # This is the primary anti-false-positive measure for legitimate business emails
+        if phishing_prob > 0.82 and confidence > 0.4:
+            return 'CRITICAL'
+        elif phishing_prob > 0.68 and confidence > 0.3:
+            return 'HIGH'
+        elif phishing_prob > 0.50:
+            return 'MEDIUM'
+        else:
+            return 'LOW'
+
+
+def classify_email_type(email_text, sender):
+    """Detect the type of email to apply appropriate bias corrections.
+    Returns: 'transactional', 'security_alert', 'newsletter', 'business', or 'unknown'
+    """
+    text_lower = email_text.lower()
+    sender_lower = sender.lower()
+
+    # Security alerts from real providers use specific, consistent language
+    security_patterns = [
+        r'new sign.?in',
+        r'sign.?in (to|on|from) (your|a)',
+        r'new device',
+        r'account activity',
+        r'we noticed a',
+        r'someone (tried|attempted)',
+        r'security (alert|warning|notification)',
+        r'unusual (sign.?in|activity|access)',
+        r'review (recent|your) activity',
+        r'check activity',
+    ]
+    if any(re.search(p, text_lower) for p in security_patterns):
+        return 'security_alert'
+
+    # Transactional emails (receipts, OTPs, confirmations)
+    transactional_patterns = [
+        r'your (order|receipt|invoice|payment|subscription)',
+        r'order (has been|was) (confirmed|shipped|placed)',
+        r'(one.time|verification) (code|password|pin)',
+        r'your (otp|code) is',
+        r'thank you for (your purchase|ordering)',
+        r'your (booking|reservation|appointment)',
+    ]
+    if any(re.search(p, text_lower) for p in transactional_patterns):
+        return 'transactional'
+
+    # Newsletter / marketing
+    newsletter_patterns = [
+        r'unsubscribe',
+        r'view (in browser|online)',
+        r'this email was sent to',
+        r'you\'re receiving this',
+        r'email preferences',
+    ]
+    if any(re.search(p, text_lower) for p in newsletter_patterns):
+        return 'newsletter'
+
+    return 'unknown'
 
 
 def get_recommendation(phishing_prob, risk_level, content_type="email"):
@@ -188,36 +253,69 @@ def analyze_email():
         
         phishing_prob = float(y_proba[1])
         safe_prob = float(y_proba[0])
+        raw_prob = phishing_prob  # Keep original for logging
         
-        # ── TRUSTED SENDER SHORT-CIRCUIT ──────────────────────────────────────────
-        # If the sender domain is a verified corporate entity, completely skip ML panic.
-        # Real phishing would never come from the actual google.com / microsoft.com domain.
+        # ── STEP 1: DETECT EMAIL TYPE ────────────────────────────────────────────
+        # Identifying the email type lets us apply appropriate bias correction per category.
+        email_type = classify_email_type(email_text, sender)
+        
+        # ── STEP 2: TRUSTED SENDER SHORT-CIRCUIT ─────────────────────────────────
+        # If the sender is a verified corporate domain, bypass the AI entirely.
+        # Real phishing never originates from the genuine google.com / microsoft.com.
         is_trusted_sender = features.get('is_trusted_sender', False)
         has_critical_structural_threat = (
             features.get('has_ip_url', False) or
             features.get('has_form', False) or
             features.get('requests_personal_info', 0) > 0
         )
+        
         if is_trusted_sender and not has_critical_structural_threat:
-            phishing_prob = 0.08   # 8% — effectively "Safe"
-            safe_prob = 0.92
+            phishing_prob = 0.06   # 6% — solidly "Safe"
+            safe_prob = 0.94
         else:
-            # ── BIAS CORRECTION ALGORITHM ────────────────────────────────────────
-            # TF-IDF models panic over words like "secure", "account", "verify".
-            # If the AI is suspicious but the feature extractor found ZERO real threats,
-            # aggressively dampen the score to eliminate false positives.
+            # ── STEP 3: EMAIL-TYPE BIAS CORRECTION ───────────────────────────────
+            # Graduated dampening based on email type. Security alerts and transactional
+            # emails are the most heavily penalized by TF-IDF, so they get the most relief.
             has_any_structural_threat = (
                 has_critical_structural_threat or
                 features.get('shortened_url_count', 0) > 0 or
                 features.get('sender_suspicious_domain', False) or
                 features.get('uses_authority_tactic', False)
             )
-            if phishing_prob > 0.4 and not has_any_structural_threat:
-                phishing_prob = phishing_prob * 0.35
+            if phishing_prob > 0.35 and not has_any_structural_threat:
+                if email_type == 'security_alert':
+                    # Security alerts are most heavily penalized by TF-IDF — max dampening
+                    phishing_prob = phishing_prob * 0.25
+                elif email_type == 'transactional':
+                    phishing_prob = phishing_prob * 0.30
+                elif email_type == 'newsletter':
+                    phishing_prob = phishing_prob * 0.40
+                else:
+                    # Unknown/business email — moderate dampening
+                    phishing_prob = phishing_prob * 0.45
+                safe_prob = 1.0 - phishing_prob
+            
+            # ── STEP 4: MINIMUM THREAT GUARD ─────────────────────────────────────
+            # Require at least ONE confirmed structural threat for MEDIUM+ risk.
+            # This is the final safeguard against pure TF-IDF word-matching bias.
+            threat_count = sum([
+                int(features.get('has_ip_url', False)),
+                int(features.get('shortened_url_count', 0) > 0),
+                int(features.get('requests_personal_info', 0) > 0),
+                int(features.get('has_form', False)),
+                int(features.get('sender_suspicious_domain', False)),
+                int(features.get('uses_authority_tactic', False)),
+                int(features.get('has_broken_grammar', False)),
+            ])
+            if threat_count == 0 and phishing_prob > 0.45:
+                # No real threats found — cap at MEDIUM floor
+                phishing_prob = min(phishing_prob, 0.44)
                 safe_prob = 1.0 - phishing_prob
         
+        print(f"📊 Email analysis: raw={raw_prob:.2f} → adjusted={phishing_prob:.2f} | type={email_type} | trusted={is_trusted_sender}")
+        
         confidence = abs(phishing_prob - safe_prob)
-        risk_level = get_risk_level(phishing_prob, confidence)
+        risk_level = get_risk_level(phishing_prob, confidence, "email")
         
         # Build response
         response = {
