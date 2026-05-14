@@ -7,10 +7,10 @@
 const axios = require('axios');
 
 class MLPythonBridge {
-  constructor(pythonServerUrl = 'http://localhost:5000', retries = 3, timeout = 30000) {
+  constructor(pythonServerUrl = 'http://localhost:5000', retries = 1, timeout = 4000) {
     this.baseUrl = pythonServerUrl;
     this.retries = retries;
-    this.timeout = timeout;  // Increased from 10s to 30s for complex ML analysis
+    this.timeout = timeout;  // Reduced to 4s to ensure fast fallback if ML server is offline
     this.isConnected = false;
     this.requestCache = new Map();
     this.cacheExpiry = 0; // Disabled cache entirely for debugging
@@ -22,7 +22,7 @@ class MLPythonBridge {
   async healthCheck() {
     try {
       const response = await axios.get(`${this.baseUrl}/api/health`, {
-        timeout: 60000
+        timeout: 3000 // 3 seconds max for health check
       });
       this.isConnected = response.status === 200;
       console.log('🔗 ML Server connected:', this.isConnected ? '✅' : '❌');
