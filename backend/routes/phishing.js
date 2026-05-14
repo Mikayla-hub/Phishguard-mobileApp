@@ -472,7 +472,6 @@ If the image contains no text at all, set "text" to an empty string.`;
         console.log('📧 Analyzing as email...');
         try {
           // ── SENDER REPUTATION: Query historical data before ML scoring ──
-          const database = db.getDb();
           const senderForAnalysis = req.body.sender || '';
           const reputation = await getSenderReputation(database, senderForAnalysis).catch(() => null);
           
@@ -691,7 +690,6 @@ If the image contains no text at all, set "text" to an empty string.`;
 
     // 3. Save to Firebase history + Active Learning + Sender Reputation Graph
     const recordId = uuidv4();
-    const database = db.getDb();
     const finalRiskScore = analysis.riskScore || 0;
     const finalRiskLevel = analysis.riskLevel || 'safe';
     const senderEmail = req.body.sender || '';
