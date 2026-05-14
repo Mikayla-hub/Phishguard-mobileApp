@@ -448,6 +448,11 @@ class URLFeatureExtractor:
         
         # Check for brand typos (case-insensitive)
         for brand, typo_patterns in brands.items():
+            # If the exact correct brand spelling is present, it's not a typo of this brand.
+            # (e.g., 'google' contains 'googl', but is the correct string)
+            if brand in hostname_lower:
+                continue
+                
             for pattern in typo_patterns:
                 if pattern in hostname_lower:
                     return True
@@ -456,6 +461,8 @@ class URLFeatureExtractor:
         # Look for suspicious numeric/special char patterns near known brands
         suspicious_chars = hostname_lower.replace('0', 'o').replace('1', 'l').replace('5', 's').replace('3', 'e')
         for brand in brands.keys():
+            if brand in hostname_lower:
+                continue
             if brand in suspicious_chars and suspicious_chars != hostname_lower:
                 return True
         
