@@ -280,7 +280,8 @@ def analyze_email():
                 has_critical_structural_threat or
                 features.get('shortened_url_count', 0) > 0 or
                 features.get('sender_suspicious_domain', False) or
-                features.get('uses_authority_tactic', False)
+                features.get('uses_authority_tactic', False) or
+                features.get('has_scam_keywords', False)
             )
             if phishing_prob > 0.35 and not has_any_structural_threat:
                 if email_type == 'security_alert':
@@ -306,6 +307,7 @@ def analyze_email():
                 int(features.get('sender_suspicious_domain', False)),
                 int(features.get('uses_authority_tactic', False)),
                 int(features.get('has_broken_grammar', False)),
+                int(features.get('has_scam_keywords', False)),
             ])
             if threat_count == 0 and phishing_prob > 0.45:
                 # No real threats found — cap at MEDIUM floor

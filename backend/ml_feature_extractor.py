@@ -251,6 +251,10 @@ class EmailFeatureExtractor:
         personal_info_keywords = ['password', 'pin', 'cvv', 'ssn', 'credit card', 'bank account']
         features['requests_personal_info'] = sum(1 for kw in personal_info_keywords
                                                 if kw in text_lower)
+                                                
+        # Scam/Prize keywords (especially common in SMS/WhatsApp phishing)
+        scam_keywords = ['free data', 'giveaway', 'lottery', 'prize', 'winner', 'claim your', 'congratulations']
+        features['has_scam_keywords'] = any(kw in text_lower for kw in scam_keywords)
         
         # ===== PHISHING TACTICS =====
         features['uses_urgency_tactic'] = urgency_count > 2  # Require multiple urgency indicators
