@@ -235,10 +235,15 @@ const PhishingAnalyzerScreen = ({ navigation }) => {
       </View>
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior="padding"
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         style={styles.content}
       >
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        >
           {/* Analysis Type Selector */}
           <View style={styles.typeSelector}>
             <TouchableOpacity
@@ -639,6 +644,7 @@ const styles = StyleSheet.create({
   },
   textInputMultiline: {
     minHeight: 120,
+    maxHeight: 200,
     textAlignVertical: "top",
   },
   senderRow: {
