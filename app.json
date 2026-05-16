@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/CyberGuardian_Logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#020617"
     },
@@ -25,6 +25,11 @@
     },
     "web": {
       "favicon": "./assets/icon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "76b43d41-a5c1-42ac-851c-49fe2ac0a382"
+      }
     }
   }
 }
