@@ -4,7 +4,7 @@
     "slug": "cyberguardian",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/CyberGuardian_Logo.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -18,13 +18,13 @@
     "android": {
       "package": "com.phishguard.cyberguardian",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/CyberGuardian_Logo.png",
         "backgroundColor": "#020617"
       },
       "edgeToEdgeEnabled": true
     },
     "web": {
-      "favicon": "./assets/icon.png"
+      "favicon": "./assets/CyberGuardian_Logo.png"
     },
     "extra": {
       "eas": {
